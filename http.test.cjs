@@ -7,7 +7,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {createApp}=require('./backend.cjs');
-const {createLocalServer}=require('./server.cjs');
+const {createLocalServer}=require('./http-server.cjs');
 test('HTTP real em loopback: vitrine, painel e parser',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-http-'));
   let app;const server=createLocalServer((req,res)=>app.handler(req,res));

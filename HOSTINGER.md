@@ -69,3 +69,7 @@ O banco local não é enviado ao GitHub nem importado automaticamente: o ambient
 Esta entrega prepara uma implantação **de teste**, não ativa pagamentos reais. A validação local cobre SQLite, MariaDB e HTTP; ainda é necessário conferir a configuração real da conta Hostinger, o certificado HTTPS, reinício/publicação e o fluxo com Mercado Pago. Cancelamento/estorno financeiro, fila durável de webhooks, reconciliação periódica, e-mail transacional, políticas comerciais e regras definitivas de frete continuam pendentes para a abertura de vendas.
 
 Referências: [implantação Node.js](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/), [MySQL com Node.js](https://www.hostinger.com/support/connecting-a-hostinger-mysql-database-to-a-node-js-application/), [bancos suportados](https://www.hostinger.com/support/1583226-which-database-management-system-is-used-at-hostinger/).
+
+## Inicialização no carregador da Hostinger · 0.6.1
+
+server.cjs inicia incondicionalmente quando é carregado pela plataforma. As funções reutilizáveis ficam em http-server.cjs. O servidor chama listen antes de aguardar a conexão e as tabelas do banco; durante a preparação, responde 503 genérico e Retry-After. Erros de inicialização são classificados sem imprimir mensagens SQL, senhas ou tokens. Isso atende ao limite de três segundos informado pelo carregador da Hostinger.

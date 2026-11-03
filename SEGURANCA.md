@@ -1,13 +1,13 @@
-# MAÉVI · revisão de segurança 0.6.0
+# MAÉVI · revisão de segurança 0.6.1
 
 Data: 03/11/2026. Node.js verificado: 24.22.1. Escopo: código local da vitrine, checkout, painel, API, SQLite, fotos, reservas, cupons e backup.
 
 ## Resultado
 
-**64 resultados aprovados na suíte principal e 6 em MariaDB real, zero falhas e zero testes ignorados**, na contagem do runner Node. Os testes do provedor usam respostas locais simuladas, sem transações externas. Sintaxe dos arquivos de aplicação e correspondência dos seletores principais com o HTML também verificadas.
+**66 resultados aprovados na suíte principal e 6 em MariaDB real, zero falhas e zero testes ignorados**, na contagem do runner Node. Os testes do provedor usam respostas locais simuladas, sem transações externas. Sintaxe dos arquivos de aplicação e correspondência dos seletores principais com o HTML também verificadas.
 
 ```powershell
-node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs
+node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs startup.test.cjs
 ```
 
 A versão está pronta para testes locais e para a próxima etapa de integração. A revisão não é garantia de ausência de vulnerabilidades nem autorização para publicar esta configuração de desenvolvimento como loja real.
@@ -102,10 +102,14 @@ Adicionados 13 cenários de pagamento: configuração incompleta e produção bl
 
 O processamento de webhook é síncrono; falhas retornam erro e dependem de reentrega do provedor ou atualização manual. Reservas com checkout iniciado permanecem retidas até conferência; nenhuma rotina local cancela ou estorna no provedor. São limitações deliberadas desta etapa de teste, não um ciclo financeiro completo de produção. Nenhum túnel, domínio ou credencial real foi configurado.
 
-## Revisão incremental · Hostinger · versão 0.6.0
+## Revisão incremental · Hostinger · versão 0.6.1
 
 Persistência MySQL/MariaDB com parâmetros, InnoDB e transações usando uma conexão dedicada e bloqueio compartilhado da loja. A implementação SQLite assíncrona serializa transações e consultas para não expor estados intermediários em chamadas concorrentes. Testes reais em MariaDB conferiram disputa pela última peça e último cupom, idempotência, expiração, Unicode/emoji, foto binária e reinício. Um trigger proposital que recusa a inserção de pedido comprovou o rollback de estoque e cupom; a mensagem genérica de falha nesse cenário é esperada.
 
 Fotos enviadas na hospedagem ficam em BLOB no banco, com quota verificada na mesma transação, sem depender da pasta substituída pelo deploy. A origem HTTPS é independente de credenciais de pagamento e validada por Host e Origin. O painel online requer ativação explícita e chave de 192 bits; cookies Secure e HSTS são enviados no Host público. Cabeçalhos de Host encaminhados não autorizam outro domínio. A camada local preserva o bloqueio anterior do painel por túnel. Nenhuma conexão TLS remota ao banco pode desativar a validação de certificado.
 
 O modo setup não cria banco nem chave e não serve a aplicação comercial; retorna preparação com noindex. Os testes da hospedagem real, do HTTPS do provedor e do Mercado Pago externo permanecem pendentes. O arquivo .env.hostinger.local e todos os arquivos de ambiente preenchidos, bancos, chaves e backups continuam fora do Git e do ZIP.
+
+## Correção de inicialização · 0.6.1
+
+Removida a dependência de require.main no ponto de entrada e antecipado listen em relação à conexão assíncrona com MySQL. Dois testes de regressão verificam o carregamento por require, o listener imediato, a resposta temporária 503, a retomada após prontidão e a ausência de credenciais nas mensagens de falha. A suíte principal soma 66 resultados aprovados; os seis cenários de MariaDB da revisão anterior continuam aplicáveis à camada de persistência, que não mudou nesta correção.

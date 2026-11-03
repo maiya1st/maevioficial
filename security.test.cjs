@@ -6,7 +6,7 @@ const os=require('node:os');
 const vm=require('node:vm');
 const {Readable}=require('node:stream');
 const {createApp}=require('./backend.cjs');
-const {createLocalServer}=require('./server.cjs');
+const {createLocalServer}=require('./http-server.cjs');
 test('revisão de segurança local',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-security-'));
   let time=Date.now();const app=createApp({dataDir:dir,adminKey:'isolated-test-key',now:()=>time});

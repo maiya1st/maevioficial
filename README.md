@@ -1,4 +1,4 @@
-# MAÉVI · versão 0.6.0
+# MAÉVI · versão 0.6.1
 
 Loja local com vitrine, painel e checkout de demonstração. Mercado Pago Checkout Pro implementado exclusivamente para testes, aguardando aplicação, credenciais e HTTPS. A instalação permanece desativada; produção e contas reais estão bloqueadas. A loja não coleta cartões nem envia mensagens ou realiza entregas reais. Veja MERCADO-PAGO.md.
 
@@ -87,10 +87,10 @@ Para backup, execute **BACKUP-MAEVI.cmd**. Ele cria um snapshot verificado em `d
 ## Verificação
 
 ```powershell
-node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs
+node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs startup.test.cjs
 ```
 
-São **64 resultados aprovados** na suíte principal e **6 cenários adicionais aprovados em MariaDB 11.4.13 real**, sem falhas. O teste HTTP precisa de permissão de conexão local. Com npm, use `npm test`, `npm run test:http`, `npm run test:all` e `npm run check`.
+São **66 resultados aprovados** na suíte principal e **6 cenários adicionais aprovados em MariaDB 11.4.13 real**, sem falhas. O teste HTTP precisa de permissão de conexão local. Com npm, use `npm test`, `npm run test:http`, `npm run test:all` e `npm run check`.
 
 No navegador foram conferidos vitrine, favoritos, tamanho, sacola, checkout com entrega e CEP, cupom, pedido e cancelamento, configurações e cadastro de cupom. O checkout foi conferido em largura de celular de 390 px; a vitrine também havia sido verificada em 320 px. Upload foi validado por testes automatizados e HTTP real; o teste pelo seletor visual ficou bloqueado e expirou a sessão do painel. Veja **SEGURANCA.md** para evidências e limites.
 
@@ -104,7 +104,7 @@ O menu Contatos está disponível no computador, celular e rodapé. WhatsApp: (4
 
 O convite do Instagram aparece após cinco segundos quando a página está visível e não há formulário ou painel aberto. Ao fechar, permanece dispensado nessa sessão do navegador. Pode ser reaberto pelo botão Instagram da MAÉVI no rodapé. Não há embed, rastreador ou envio automático de mensagens; os links abrem somente por ação do visitante.
 
-## Hostinger · versão 0.6.0
+## Hostinger · versão 0.6.1
 
 Adicionados banco MySQL/MariaDB, persistência de fotos no banco, configuração HTTPS com Host exato e cookie administrativo Secure. O modo local mantém SQLite e arquivos locais. O modo MAEVI_HOSTING=setup permite criar o site na hospedagem com uma página de preparação, sem abrir catálogo, painel ou pagamentos. Depois de criar o banco e preencher as variáveis privadas, MAEVI_HOSTING=hostinger habilita a loja demonstrativa. Veja HOSTINGER.md antes da primeira implantação.
 
