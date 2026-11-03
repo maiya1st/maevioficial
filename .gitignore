@@ -1,0 +1,15 @@
+data/
+node_modules/
+.env
+.env.*
+!.env.local.example
+*.log
+# Dados privados e cópias locais, inclusive se movidos para fora de data/.
+backups/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+admin-key.txt
+*.pem
+*.key

@@ -1,0 +1,38 @@
+const {fail}=require('./errors.cjs');
+const states=new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
+const defaults=Object.freeze({version:1,name:'MAÉVI',email:'',whatsapp:'41985213878',instagram:'maevioficial',pickupAddress:'',pickupEnabled:true,deliveryEnabled:true,deliveryLabel:'Entrega demonstrativa',deliveryCents:1990,deliveryMinDays:3,deliveryMaxDays:8,freeShippingFromCents:0,reservationMinutes:30});
+function text(value,label,max=200,optional=false){
+  if(optional&&(value===undefined||value===''))return '';
+  if(typeof value!=='string'||!value.trim()||value.length>max||/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value))fail(400,`${label} inválido.`);
+  return value.trim();
+}
+function integer(value,label,min,max){if(!Number.isInteger(value)||value<min||value>max)fail(400,`${label} inválido.`);return value;}
+function cep(value){if(typeof value!=='string'||!/^\d{5}-?\d{3}$/.test(value))fail(400,'Informe um CEP de oito dígitos.');const code=value.replace('-','');if(/^(\d)\1{7}$/.test(code))fail(400,'CEP inválido.');return code;}
+function phone(value,optional=true){if(optional&&(value===undefined||value===''))return '';if(typeof value!=='string'||!/^[+()\d\s-]{10,25}$/.test(value))fail(400,'Telefone inválido.');const digits=value.replace(/\D/g,'').replace(/^55(?=\d{10,11}$)/,'');if(!/^\d{10,11}$/.test(digits)||/^(\d)\1+$/.test(digits))fail(400,'Informe telefone com DDD.');return digits;}
+function settings(input){
+  const s={version:input.version,name:text(input.name,'Nome da loja',100),email:text(input.email,'E-mail',254,true),whatsapp:phone(input.whatsapp),instagram:text(input.instagram,'Instagram',40,true),pickupAddress:text(input.pickupAddress,'Endereço de retirada',350,true),pickupEnabled:input.pickupEnabled,deliveryEnabled:input.deliveryEnabled,deliveryLabel:text(input.deliveryLabel,'Nome da entrega',80),deliveryCents:integer(input.deliveryCents,'Valor de entrega',0,100000),deliveryMinDays:integer(input.deliveryMinDays,'Prazo mínimo',1,90),deliveryMaxDays:integer(input.deliveryMaxDays,'Prazo máximo',1,90),freeShippingFromCents:integer(input.freeShippingFromCents,'Valor para frete grátis',0,10000000),reservationMinutes:integer(input.reservationMinutes,'Tempo de reserva',15,1440)};
+  if(s.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email))fail(400,'E-mail da loja inválido.');
+  if(s.instagram&&!/^[a-zA-Z0-9._]{1,30}$/.test(s.instagram))fail(400,'Use apenas o nome do perfil do Instagram, sem @ ou URL.');
+  if(typeof s.pickupEnabled!=='boolean'||typeof s.deliveryEnabled!=='boolean'||(!s.pickupEnabled&&!s.deliveryEnabled)||s.deliveryMinDays>s.deliveryMaxDays)fail(400,'Configure ao menos uma forma de recebimento e prazos válidos.');
+  return s;
+}
+function address(input){
+  if(!input||typeof input!=='object'||Array.isArray(input))fail(400,'Informe o endereço de entrega.');
+  const result={cep:cep(input.cep),street:text(input.street,'Rua',150),number:text(input.number,'Número',20),complement:text(input.complement,'Complemento',100,true),district:text(input.district,'Bairro',100),city:text(input.city,'Cidade',100),state:text(input.state,'UF',2).toUpperCase()};
+  if(!states.has(result.state))fail(400,'Selecione uma UF válida.');return result;
+}
+function shipping(input,store,subtotalCents){
+  if(input!==undefined&&(!input||typeof input!=='object'||Array.isArray(input)))fail(400,'Forma de recebimento inválida.');
+  const method=input?.method||'pickup';
+  if(method==='pickup'){if(!store.pickupEnabled)fail(409,'Retirada indisponível no momento.');return {method,label:'Retirada na loja (teste)',priceCents:0,addressLabel:store.pickupAddress||'Endereço será definido antes da abertura.'};}
+  if(method!=='delivery'||!store.deliveryEnabled)fail(409,'Entrega indisponível no momento.');
+  const code=cep(input.cep),free=store.freeShippingFromCents>0&&subtotalCents>=store.freeShippingFromCents;
+  return {method,label:store.deliveryLabel,cep:code,priceCents:free?0:store.deliveryCents,minDays:store.deliveryMinDays,maxDays:store.deliveryMaxDays,estimateOnly:true};
+}
+function coupon(input){
+  const code=text(input.code,'Código do cupom',30).toUpperCase();if(!/^[A-Z0-9_-]{3,30}$/.test(code))fail(400,'Código de cupom inválido.');
+  const c={code,percent:integer(input.percent,'Desconto percentual',1,80),minCents:integer(input.minCents,'Compra mínima',0,10000000),maxUses:integer(input.maxUses,'Limite de usos',1,100000),active:input.active,expiresAt:input.expiresAt||''};
+  if(typeof c.active!=='boolean'||typeof c.expiresAt!=='string'||(c.expiresAt&&(!/^\d{4}-\d{2}-\d{2}T/.test(c.expiresAt)||!Number.isFinite(Date.parse(c.expiresAt)))))fail(400,'Situação ou validade do cupom inválida.');
+  return c;
+}
+module.exports={defaults,text,integer,cep,phone,settings,address,shipping,coupon,states};
