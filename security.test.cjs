@@ -10,7 +10,7 @@ const {createLocalServer}=require('./server.cjs');
 test('revisão de segurança local',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-security-'));
   let time=Date.now();const app=createApp({dataDir:dir,adminKey:'isolated-test-key',now:()=>time});
-  t.after(()=>{app.close();if(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-security-'))fs.rmSync(dir,{recursive:true,force:true});});
+  t.after(async()=>{await app.close();if(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-security-'))fs.rmSync(dir,{recursive:true,force:true});});
   async function request(url,{method='GET',data,raw,headers={},ip='security-test'}={}){
     const req=Readable.from(raw===undefined?(data===undefined?[]:[JSON.stringify(data)]):[raw]);
     Object.assign(req,{url,method,headers:{host:'127.0.0.1:5173','content-type':'application/json','x-maevi-request':'1',...headers},socket:{remoteAddress:ip}});

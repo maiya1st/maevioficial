@@ -38,7 +38,7 @@ test('conta vendedora real é bloqueada antes de criar preferência',async t=>{
   const f=await setup(t);f.p.seller.tags=[];assert.equal((await f.action('payment-session')).status,503);assert.equal(f.p.preferences,0);assert.equal((await f.lookup()).status,'demo_payment_review');
 });
 test('reserva de pagamento não expira nem cancela enquanto depende do provedor',async t=>{
-  const f=await setup(t);await f.action('payment-session');f.advance(60*60000);f.app.runMaintenance();assert.equal((await f.lookup()).status,'demo_payment_pending');assert.equal((await f.action('cancel')).status,409);
+  const f=await setup(t);await f.action('payment-session');f.advance(60*60000);await f.app.runMaintenance();assert.equal((await f.lookup()).status,'demo_payment_pending');assert.equal((await f.action('cancel')).status,409);
   assert.equal((await f.action('payment-refresh')).data.order.status,'demo_payment_review');
   const cookie=await f.login();assert.equal((await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_cancelled'},headers:{cookie}})).status,409);
 });

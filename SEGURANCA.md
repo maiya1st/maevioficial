@@ -1,13 +1,13 @@
-# MAÉVI · revisão de segurança 0.5.0
+# MAÉVI · revisão de segurança 0.6.0
 
 Data: 03/11/2026. Node.js verificado: 24.22.1. Escopo: código local da vitrine, checkout, painel, API, SQLite, fotos, reservas, cupons e backup.
 
 ## Resultado
 
-**60 resultados aprovados, zero falhas e zero testes ignorados**, na contagem do runner Node. Os testes do provedor usam respostas locais simuladas, sem transações externas. Sintaxe dos arquivos de aplicação e correspondência dos seletores principais com o HTML também verificadas.
+**64 resultados aprovados na suíte principal e 6 em MariaDB real, zero falhas e zero testes ignorados**, na contagem do runner Node. Os testes do provedor usam respostas locais simuladas, sem transações externas. Sintaxe dos arquivos de aplicação e correspondência dos seletores principais com o HTML também verificadas.
 
 ```powershell
-node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs
+node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs
 ```
 
 A versão está pronta para testes locais e para a próxima etapa de integração. A revisão não é garantia de ausência de vulnerabilidades nem autorização para publicar esta configuração de desenvolvimento como loja real.
@@ -70,14 +70,14 @@ As interações usaram banco e assets separados em work, chave exclusiva de QA e
 
 ## Limites que permanecem
 
-1. **Configuração local.** O servidor continua ligado exclusivamente a 127.0.0.1. Não exponha esta versão por túnel ou diretamente na internet.
+1. **Configuração por ambiente.** O modo local continua em 127.0.0.1. Os modos setup e hostinger são explícitos e escutam em 0.0.0.0. Use HOSTINGER.md para preparar HTTPS, banco e variáveis; não exponha o modo local como se fosse a configuração online.
 2. **Pagamento de teste preparado, não ativado.** Mercado Pago Checkout Pro implementado com conta vendedora de teste, assinatura HMAC, comparação de valor, moeda, referência, vendedor e preferência. Sem configuração completa, retorna 503. O ensaio externo ainda não foi realizado. Produção permanece bloqueada; ver MERCADO-PAGO.md.
-3. **Autenticação de desenvolvimento.** O cookie não usa Secure porque o ambiente é HTTP local. Para produção: HTTPS, cookies Secure, identidade administrativa adequada, recuperação e proteção adicional da conta.
+3. **Autenticação administrativa.** HTTP local mantém o cookie sem Secure; o modo Hostinger exige chave aleatória forte e HTTPS, e usa Secure, HttpOnly e SameSite=Strict. Sessões ficam na memória e encerram no reinício. Recuperação da chave é feita pelas variáveis privadas da hospedagem. MFA, gestão de múltiplos usuários e monitoramento administrativo ainda não foram implementados.
 4. **Dados locais sem criptografia pela aplicação.** Chave, banco e backups dependem da proteção da conta Windows. Um processo que comprometa a conta pode lê-los. Use dados fictícios nesta fase. O backup inclui a chave: não o compartilhe.
 5. **Frete ilustrativo.** A tarifa e os prazos são exemplos configuráveis, sem transportadora integrada. Reservas novas têm expiração; pedidos antigos sem prazo são preservados.
 6. **Serviços e conteúdo externos.** Google Fonts ainda é acessado pelo navegador; ViaCEP é opcional. Imagens remotas cadastradas pelo proprietário continuam restritas a images.unsplash.com; as fotos demonstrativas padrão são locais. Substitua as fotos e as informações comerciais antes da abertura.
 7. **Sem auditoria de infraestrutura pública.** Domínio, TLS, hospedagem, gateway, e-mail transacional, monitoramento, retenção de dados e políticas comerciais reais ainda precisam ser configurados e revisados.
-8. **Sem garantia universal.** Não foi realizado teste de carga, teste de penetração externo, varredura antivírus das fotos, avaliação de todos os navegadores ou teste em aparelhos físicos. Não há pacotes npm de terceiros declarados; isso não elimina vulnerabilidades do runtime ou sistema operacional.
+8. **Sem garantia universal.** Não foi realizado teste de carga, teste de penetração externo, varredura antivírus das fotos, avaliação de todos os navegadores ou teste em aparelhos físicos. O modo MySQL usa mysql2 e dependências fixadas no lockfile; npm audit não apontou vulnerabilidades conhecidas nesta revisão. Isso não elimina vulnerabilidades do runtime ou sistema operacional.
 
 ## Aplicar a atualização
 
@@ -101,3 +101,11 @@ Adicionados navegação de contatos e convite não modal do Instagram. WhatsApp 
 Adicionados 13 cenários de pagamento: configuração incompleta e produção bloqueadas, validação do redirecionamento, concorrência da sessão, bloqueio de conta real, retenção de estoque incerto, assinatura falsa/antiga/corpo divergente, duplicata, retorno forjado, divergência de valor/moeda/ambiente/vendedor/preferência, consulta manual, evento atrasado, estorno, aprovação tardia, segundo pagamento, timeout e isolamento do painel pelo Host público. Credenciais ficam em .env.local, ignorado no Git e excluído do ZIP.
 
 O processamento de webhook é síncrono; falhas retornam erro e dependem de reentrega do provedor ou atualização manual. Reservas com checkout iniciado permanecem retidas até conferência; nenhuma rotina local cancela ou estorna no provedor. São limitações deliberadas desta etapa de teste, não um ciclo financeiro completo de produção. Nenhum túnel, domínio ou credencial real foi configurado.
+
+## Revisão incremental · Hostinger · versão 0.6.0
+
+Persistência MySQL/MariaDB com parâmetros, InnoDB e transações usando uma conexão dedicada e bloqueio compartilhado da loja. A implementação SQLite assíncrona serializa transações e consultas para não expor estados intermediários em chamadas concorrentes. Testes reais em MariaDB conferiram disputa pela última peça e último cupom, idempotência, expiração, Unicode/emoji, foto binária e reinício. Um trigger proposital que recusa a inserção de pedido comprovou o rollback de estoque e cupom; a mensagem genérica de falha nesse cenário é esperada.
+
+Fotos enviadas na hospedagem ficam em BLOB no banco, com quota verificada na mesma transação, sem depender da pasta substituída pelo deploy. A origem HTTPS é independente de credenciais de pagamento e validada por Host e Origin. O painel online requer ativação explícita e chave de 192 bits; cookies Secure e HSTS são enviados no Host público. Cabeçalhos de Host encaminhados não autorizam outro domínio. A camada local preserva o bloqueio anterior do painel por túnel. Nenhuma conexão TLS remota ao banco pode desativar a validação de certificado.
+
+O modo setup não cria banco nem chave e não serve a aplicação comercial; retorna preparação com noindex. Os testes da hospedagem real, do HTTPS do provedor e do Mercado Pago externo permanecem pendentes. O arquivo .env.hostinger.local e todos os arquivos de ambiente preenchidos, bancos, chaves e backups continuam fora do Git e do ZIP.

@@ -1,4 +1,4 @@
-# MAÉVI · versão 0.5.0
+# MAÉVI · versão 0.6.0
 
 Loja local com vitrine, painel e checkout de demonstração. Mercado Pago Checkout Pro implementado exclusivamente para testes, aguardando aplicação, credenciais e HTTPS. A instalação permanece desativada; produção e contas reais estão bloqueadas. A loja não coleta cartões nem envia mensagens ou realiza entregas reais. Veja MERCADO-PAGO.md.
 
@@ -9,7 +9,7 @@ Loja local com vitrine, painel e checkout de demonstração. Mercado Pago Checko
 3. Acesse **http://127.0.0.1:5173/** e atualize a página.
 4. Painel: **http://127.0.0.1:5173/admin**. Abra **data/admin-key.txt** no VS Code e use a chave para entrar.
 
-O iniciador usa o Node do sistema ou o runtime do Codex já disponível neste computador. Requer Node.js 24 ou superior, atualizado; os testes desta versão usaram 24.22.1. Não há dependências npm para instalar. Abrir `index.html` diretamente não executa o backend.
+O iniciador usa o Node do sistema ou o runtime do Codex já disponível neste computador. Requer Node.js 24 ou superior, atualizado; os testes desta versão usaram 24.22.1. O modo SQLite local usa os módulos nativos do Node. A implantação MySQL/MariaDB instala o driver mysql2 com npm ci; as versões estão fixadas no package-lock.json. Abrir `index.html` diretamente não executa o backend.
 
 No terminal do VS Code, também pode executar:
 
@@ -87,19 +87,25 @@ Para backup, execute **BACKUP-MAEVI.cmd**. Ele cria um snapshot verificado em `d
 ## Verificação
 
 ```powershell
-node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs
+node --test backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs
 ```
 
-São **60 resultados aprovados**, sem falhas, na revisão desta entrega. O teste HTTP precisa de permissão de conexão local. Com npm, use `npm test`, `npm run test:http`, `npm run test:all` e `npm run check`.
+São **64 resultados aprovados** na suíte principal e **6 cenários adicionais aprovados em MariaDB 11.4.13 real**, sem falhas. O teste HTTP precisa de permissão de conexão local. Com npm, use `npm test`, `npm run test:http`, `npm run test:all` e `npm run check`.
 
 No navegador foram conferidos vitrine, favoritos, tamanho, sacola, checkout com entrega e CEP, cupom, pedido e cancelamento, configurações e cadastro de cupom. O checkout foi conferido em largura de celular de 390 px; a vitrine também havia sido verificada em 320 px. Upload foi validado por testes automatizados e HTTP real; o teste pelo seletor visual ficou bloqueado e expirou a sessão do painel. Veja **SEGURANCA.md** para evidências e limites.
 
 ## Próxima etapa: gateway e publicação
 
-Consulte **MERCADO-PAGO.md**. O código de pagamento de teste está preparado: sessão hospedada, assinatura de webhook e consulta verificada à API. Os testes usam respostas simuladas; o ensaio com Mercado Pago ainda depende de criar a aplicação e configurar credenciais e HTTPS. Produção, cancelamento/estorno financeiro e liberação automática de reservas com pagamento iniciado não estão habilitados. Não publique a configuração HTTP local diretamente.
+Consulte **HOSTINGER.md** para a implantação de teste e **MERCADO-PAGO.md** para pagamentos. O código de pagamento de teste está preparado: sessão hospedada, assinatura de webhook e consulta verificada à API. Os testes usam respostas simuladas; o ensaio com Mercado Pago ainda depende de criar a aplicação e configurar credenciais e HTTPS. Produção, cancelamento/estorno financeiro e liberação automática de reservas com pagamento iniciado não estão habilitados. Não publique a configuração HTTP local diretamente.
 
 ## Contatos · atualização 03/11/2026
 
 O menu Contatos está disponível no computador, celular e rodapé. WhatsApp: (41) 98521-3878, link https://wa.me/5541985213878. Instagram: @maevioficial, link https://www.instagram.com/maevioficial/. Os dados também foram gravados nas configurações existentes da loja e continuam editáveis no painel.
 
 O convite do Instagram aparece após cinco segundos quando a página está visível e não há formulário ou painel aberto. Ao fechar, permanece dispensado nessa sessão do navegador. Pode ser reaberto pelo botão Instagram da MAÉVI no rodapé. Não há embed, rastreador ou envio automático de mensagens; os links abrem somente por ação do visitante.
+
+## Hostinger · versão 0.6.0
+
+Adicionados banco MySQL/MariaDB, persistência de fotos no banco, configuração HTTPS com Host exato e cookie administrativo Secure. O modo local mantém SQLite e arquivos locais. O modo MAEVI_HOSTING=setup permite criar o site na hospedagem com uma página de preparação, sem abrir catálogo, painel ou pagamentos. Depois de criar o banco e preencher as variáveis privadas, MAEVI_HOSTING=hostinger habilita a loja demonstrativa. Veja HOSTINGER.md antes da primeira implantação.
+
+A chave do painel online e os campos da hospedagem estão no arquivo privado .env.hostinger.local gerado por prepare-hostinger.cjs. Esse arquivo não é enviado ao GitHub ou incluído no ZIP. Não o compartilhe no chat.

@@ -67,3 +67,7 @@ Encerre o servidor com Ctrl+C e abra `INICIAR-MAEVI.cmd` novamente. Sem os quatr
 - [Notificações](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro-preferences/payment-notifications)
 - [Contas de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro-preferences/test-accounts)
 - [Compras de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro-preferences/integration-test/test-purchases)
+
+## Hospedagem Hostinger
+
+A preparação de domínio temporário, banco e painel é descrita em HOSTINGER.md. No modo hostinger, a loja pode funcionar em demonstração mesmo com o Mercado Pago desativado. Configure o webhook e credenciais antes de habilitar MAEVI_MP_MODE=test; a ativação de pagamentos reais continua bloqueada. Use a mesma origem HTTPS da vitrine para os retornos e o webhook.

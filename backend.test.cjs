@@ -8,7 +8,7 @@ const {createApp}=require('./backend.cjs');
 test('catálogo, autenticação, pedidos, estoque e persistência',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-test-'));
   let app=createApp({dataDir:dir,adminKey:'test-only-key'});
-  t.after(()=>{app.close();if(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-test-'))fs.rmSync(dir,{recursive:true,force:true});});
+  t.after(async()=>{await app.close();if(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-test-'))fs.rmSync(dir,{recursive:true,force:true});});
   async function request(url,{method='GET',data,headers={},raw}={}){
     const req=Readable.from(raw!==undefined?[raw]:data===undefined?[]:[JSON.stringify(data)]);
     Object.assign(req,{url,method,headers:{host:'127.0.0.1:5173','content-type':'application/json','x-maevi-request':'1',...headers},socket:{remoteAddress:'test'}});
@@ -95,7 +95,7 @@ test('catálogo, autenticação, pedidos, estoque e persistência',async t=>{
     assert.equal((await request('/api/admin/products/1',{method:'PUT',data:legacy,headers:{cookie}})).status,200);
     assert.equal((await request('/api/admin/products/5',{method:'PUT',data:custom,headers:{cookie}})).status,200);
     assert.equal((await post('/api/admin/logout',{}, {cookie})).status,200);assert.equal((await request('/api/admin/orders',{headers:{cookie}})).status,401);
-    app.close();app=createApp({dataDir:dir,adminKey:'test-only-key'});
+    await app.close();app=createApp({dataDir:dir,adminKey:'test-only-key'});
     assert.equal((await catalog()).data.products.find(p=>p.id===2).stock.GG,0);
     const saved=await request('/api/orders/'+order.id,{headers:{'x-order-token':token}});assert.equal(saved.data.order.status,'demo_cancelled');
     const login=await post('/api/admin/login',{key:'test-only-key'});const newCookie=login.headers['set-cookie'].split(';')[0];

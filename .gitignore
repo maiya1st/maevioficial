@@ -13,3 +13,10 @@ backups/
 admin-key.txt
 *.pem
 *.key
+*.sql
+*.sql.gz
+*.sql.zip
+*.bak
+*.backup
+exports/
+assets/upload-*

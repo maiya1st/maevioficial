@@ -3,7 +3,7 @@ const {Readable}=require('node:stream');const {createApp}=require('./backend.cjs
 function fixture(t,options={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-commerce-'));let time=Date.now();
   const app=createApp({dataDir:path.join(root,'data'),assetDir:path.join(root,'assets'),adminKey:'fixture-admin-key',now:()=>time,...options});
-  t.after(()=>{app.close();if(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-commerce-'))fs.rmSync(root,{recursive:true,force:true});});
+  t.after(async()=>{await app.close();if(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-commerce-'))fs.rmSync(root,{recursive:true,force:true});});
   async function request(url,{method='GET',data,raw,headers={},ip='fixture'}={}){
     const req=Readable.from(raw!==undefined?[raw]:data===undefined?[]:[JSON.stringify(data)]);
     Object.assign(req,{url,method,headers:{host:'127.0.0.1:5173','content-type':'application/json','x-maevi-request':'1',...headers},socket:{remoteAddress:ip}});

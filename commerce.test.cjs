@@ -58,7 +58,7 @@ test('cupom respeita expiração, mínimo, ativo e versão de edição',async t=
 });
 test('expiração libera estoque e cupom uma vez e a repetição retorna o pedido expirado',async t=>{
  const f=fixture(t),cookie=await f.login();await f.post('/api/admin/coupons',coupon,{cookie});const result=await f.createOrder({coupon:coupon.code});assert.equal(result.status,201);
- f.advance(31*60000);assert.equal(f.app.runMaintenance(),1);assert.equal(f.app.runMaintenance(),0);
+ f.advance(31*60000);assert.equal(await f.app.runMaintenance(),1);assert.equal(await f.app.runMaintenance(),0);
  const expired=await f.request('/api/orders/'+result.data.order.id,{headers:{'x-order-token':result.data.token}});assert.equal(expired.data.order.status,'demo_expired');
  assert.equal((await f.request('/api/products')).data.products[0].stock.M,5);const renewed=await f.login();assert.equal((await f.request('/api/admin/coupons',{headers:{cookie:renewed}})).data.coupons[0].used,0);
  const retry=await f.createOrder({coupon:coupon.code});assert.equal(retry.status,200);assert.equal(retry.data.order.id,result.data.order.id);assert.equal(retry.data.order.status,'demo_expired');
@@ -66,7 +66,7 @@ test('expiração libera estoque e cupom uma vez e a repetição retorna o pedid
 test('pedido iniciado no painel não expira como reserva pendente',async t=>{
  const f=fixture(t),cookie=await f.login(),result=await f.createOrder();
  const status=await f.request('/api/admin/orders/'+result.data.order.id,{method:'PATCH',headers:{cookie},data:{status:'demo_preparing'}});assert.equal(status.status,200);
- f.advance(31*60000);assert.equal(f.app.runMaintenance(),0);assert.equal((await f.request('/api/products')).data.products[0].stock.M,4);
+ f.advance(31*60000);assert.equal(await f.app.runMaintenance(),0);assert.equal((await f.request('/api/products')).data.products[0].stock.M,4);
  assert.equal((await f.post('/api/orders/'+result.data.order.id+'/cancel',{}, {'x-order-token':result.data.token})).status,409);
 });
 test('cancelamento exige token; um cliente não cancela pedido alheio',async t=>{
