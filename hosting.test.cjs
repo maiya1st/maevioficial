@@ -20,6 +20,9 @@ test('painel online usa cookie Secure, verifica origem, autentica e encerra a se
   assert.equal((await f.request('/api/admin/products',{headers:{...headers,cookie}})).status,200);
   const logout=await f.post('/api/admin/logout',{}, {...headers,cookie});assert.equal(logout.status,200);assert.match(logout.headers['set-cookie'],/; Secure/);assert.equal((await f.request('/api/admin/products',{headers:{...headers,cookie}})).status,401);
   assert.equal((await f.request('/api/store',{headers})).status,200);assert.equal((await f.request('/api/health',{headers})).status,200);
+  assert.equal((await f.request('/api/store',{headers:{...headers,host:'maevi.example:443'}})).status,200);
+  assert.equal((await f.request('/api/store',{headers:{...headers,host:'MAEVI.EXAMPLE'}})).status,200);
+  assert.equal((await f.request('/api/store',{headers:{...headers,host:'evil.example:443','x-forwarded-host':'maevi.example'}})).status,403);
 });
 test('fotos no banco sobrevivem à troca da pasta da aplicação e não aparecem no sistema de arquivos',async t=>{
   const f=fixture(t,{databaseImages:true}),cookie=await f.login(),bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=','base64');

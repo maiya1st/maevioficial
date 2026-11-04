@@ -23,7 +23,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   }
   const db=createDatabase({dataDir,mysql});
   const ready=db.init(seed,commerce.defaults,assetDir);
-  const sessions=new Map(), limits=new Map();
+  const sessions=new Map(), limits=new Map();let rejectedHostLogs=0;
   const allProducts=async ()=>(await db.prepare('SELECT data FROM products ORDER BY id').all()).map(r=>JSON.parse(r.data));
   const getProduct=async id=>{const row=(await db.prepare('SELECT data FROM products WHERE id=?').get(id));return row ? JSON.parse(row.data):null;};
   const saveProduct=async p=>{p.version=(p.version||0)+1;return (await db.prepare('INSERT INTO products(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(p.id,JSON.stringify(p)));};
@@ -169,18 +169,23 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
       const deployedOrigin=publicOrigin||(payments.options().configured?payments.origin:'');
       const publicHost=deployedOrigin?new URL(deployedOrigin).host:'';
       const allowedHosts=[...localHosts,...(publicHost?[publicHost]:[])];
-      if(!allowedHosts.includes(req.headers.host))fail(403,'Acesso permitido apenas pelo endereço local da loja.');
-      const expectedOrigin=req.headers.host===publicHost?deployedOrigin:'http://'+req.headers.host;
+      let requestHost=typeof req.headers.host==='string'?req.headers.host.toLowerCase():'';
+      if(publicHost&&requestHost===publicHost+':443')requestHost=publicHost;
+      if(!allowedHosts.includes(requestHost)){
+        if(rejectedHostLogs<3){rejectedHostLogs++;const safe=value=>typeof value==='string'?value.slice(0,253).replace(/[^a-zA-Z0-9.:[\]-]/g,'_'):'ausente';console.error('MAÉVI [HOST_REJECTED]: recebido='+safe(req.headers.host)+'; permitido='+safe(publicHost||'somente-local')+'; proxy='+safe(req.headers['x-forwarded-host'])+'; origem-conexao='+safe(req.socket?.remoteAddress));}
+        fail(403,'Endereço da loja não permitido.');
+      }
+      const expectedOrigin=requestHost===publicHost?deployedOrigin:'http://'+requestHost;
       if(req.headers.origin&&req.headers.origin!==expectedOrigin)fail(403,'Origem não permitida.');
       if(typeof req.url!=='string'||!req.url.startsWith('/')||req.url.startsWith('//')||req.url.includes('\\')||req.url.length>2048)fail(400,'Endereço inválido.');
-      const url=new URL(req.url,'http://'+req.headers.host), route=url.pathname;
-      if(publicOrigin&&req.headers.host===publicHost){
+      const url=new URL(req.url,'http://'+requestHost), route=url.pathname;
+      if(publicOrigin&&requestHost===publicHost){
         res.setHeader('Strict-Transport-Security','max-age=31536000');
         if(req.headers['x-forwarded-proto']==='http'){res.writeHead(308,{Location:publicOrigin+req.url,'Cache-Control':'no-store'});return res.end();}
       }
-      const onlineAdmin=publicAdmin&&req.headers.host===publicHost;
-      if((route.startsWith('/admin')||route.startsWith('/api/admin')||['/admin.html','/admin.js','/admin.css','/operations.js'].includes(route))&&!onlineAdmin&&(!localHosts.includes(req.headers.host)||req.headers['x-forwarded-for']||req.headers['forwarded']||req.headers['x-forwarded-host']))fail(403,'Painel disponível somente no computador da loja.');
-      const secureCookie=req.headers.host===publicHost?'; Secure':'';
+      const onlineAdmin=publicAdmin&&requestHost===publicHost;
+      if((route.startsWith('/admin')||route.startsWith('/api/admin')||['/admin.html','/admin.js','/admin.css','/operations.js'].includes(route))&&!onlineAdmin&&(!localHosts.includes(requestHost)||req.headers['x-forwarded-for']||req.headers['forwarded']||req.headers['x-forwarded-host']))fail(403,'Painel disponível somente no computador da loja.');
+      const secureCookie=requestHost===publicHost?'; Secure':'';
       if(route==='/api/payments/mercadopago/webhook'&&req.method==='POST'){
         res.setHeader('Cache-Control','no-store');rate(req,'webhook',120);
         const paymentId=payments.verifyNotification(req.headers,url);const input=await body(req);
