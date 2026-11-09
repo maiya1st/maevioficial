@@ -362,3 +362,15 @@ body:has(dialog[open]) .whatsapp-float{display:none}
   .welcome-popup h2{font-size:32px}
   .look-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Ícones desenhados (SVG) no lugar de símbolos que viram emoji no celular */
+.ico{display:inline-block;vertical-align:-.15em;flex:none}
+.favorite-button .ico{width:20px;height:20px;vertical-align:middle}
+.favorite-button[aria-pressed=true] .ico{fill:currentColor}
+.marquee i{display:inline-block;width:9px;height:9px;background:var(--bronze);transform:rotate(45deg);margin:0 .2em;font-size:0!important}
+.instagram-symbol .ico{width:34px;height:34px;vertical-align:top}
+.checkmark .ico{width:30px;height:30px;vertical-align:middle}
+.payment-notice>span .ico{width:20px;height:20px}
+.orbit-arrow,#back-top{display:grid;place-items:center}
+.menu-dialog nav span .ico{width:20px;height:20px}
+.edit-card i .ico{width:.9em;height:.9em;vertical-align:baseline}
