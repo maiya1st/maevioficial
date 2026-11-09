@@ -306,3 +306,59 @@ footer a:focus-visible,footer button:focus-visible{outline-color:var(--rose)}
 .policy-text{white-space:pre-line;font-size:15px;line-height:1.7;color:#4b4f3b;max-height:60dvh;overflow:auto}
 .policy-link{display:block;margin:8px 0 0 30px;font-size:13px}
 #policy-open{display:block;font-size:14px;margin:0;padding:10px 0;text-align:left}
+
+/* ---------- Recursos de venda ---------- */
+.color-options{display:flex;flex-wrap:wrap;gap:8px;margin:-14px 0 24px}
+.color-options button{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px 0 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:13px}
+.color-options button[aria-pressed=true]{border-color:var(--olive);box-shadow:0 0 0 1px var(--olive);font-weight:600}
+.color-options .swatch{margin:0;width:16px;height:16px}
+.product-color .swatch+.swatch{margin-left:-5px}
+.product-color .swatch{box-shadow:0 0 0 2px var(--paper)}
+.notify{margin:4px 0 12px}
+.notify-open{font-size:14px!important}
+.notify-form{margin-top:12px;padding:16px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.notify-form p{font-size:14px!important;margin:0 0 12px}
+.notify-form label{display:block;font-size:13px;margin:0 0 12px}
+.notify-form input:not([type=checkbox]),.notify-form select{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:4px;font:inherit;font-size:16px;background:#fff;color:var(--olive)}
+.notify-form .checkbox-label{display:flex;gap:10px;align-items:flex-start;font-size:13px}
+.notify-form .button{width:100%}
+.notify-done{font-size:15px!important;color:var(--olive)}
+.size-chart{overflow-x:auto;margin:4px 0 12px}
+.size-chart table{width:100%;border-collapse:collapse;font-size:14px;white-space:nowrap}
+.size-chart caption{text-align:left;font-size:12px;color:var(--muted);padding-bottom:8px}
+.size-chart th,.size-chart td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:center}
+.size-chart thead th{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.size-chart tbody th{font-weight:700;text-align:left}
+.look{grid-column:1/-1;padding:28px 0 8px;border-top:1px solid var(--line);margin-top:8px}
+.look h3{font-size:30px;margin:0 0 16px}
+.look-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+.look-card{display:flex;flex-direction:column;gap:4px;padding:0;text-align:left}
+.look-card img{width:100%;aspect-ratio:3/4;object-fit:cover;object-position:center 25%;border-radius:4px;background:var(--sand-2);transition:transform .4s}
+.look-card:hover img{transform:scale(1.03)}
+.look-card span{font:18px/1.2 'Cormorant Garamond',Georgia,serif;margin-top:6px}
+.look-card strong{font-size:13px}
+.whatsapp-float{position:fixed;right:20px;bottom:20px;z-index:9;display:flex;align-items:center;gap:10px;height:56px;padding:0 14px;border-radius:999px;background:#1f8f4e;color:#fff;box-shadow:0 10px 30px #0e120944;font-size:14px;font-weight:600;transition:transform .25s,box-shadow .25s}
+.whatsapp-float:hover{transform:translateY(-2px);box-shadow:0 14px 34px #0e120955}
+.whatsapp-float span{max-width:0;overflow:hidden;white-space:nowrap;transition:max-width .35s}
+.whatsapp-float:hover span,.whatsapp-float:focus-visible span{max-width:160px;margin-right:4px}
+body:has(dialog[open]) .whatsapp-float{display:none}
+.storefront #back-top{bottom:88px;right:26px}
+.welcome-popup{position:fixed;left:24px;bottom:24px;z-index:11;width:min(360px,calc(100vw - 32px));padding:30px 28px 26px;background:var(--paper);color:var(--olive);border-radius:14px;box-shadow:0 24px 70px #0e120966;border:1px solid var(--line);animation:card-in .5s var(--ease)}
+.welcome-popup h2{font-size:38px;line-height:1.05;margin:4px 0 12px}
+.welcome-popup h2 em{color:var(--bronze);font-style:italic}
+.welcome-popup p{font-size:14px;margin:0 0 14px}
+.welcome-popup input:not([type=checkbox]){width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:16px;background:#fff;margin-bottom:12px;color:var(--olive)}
+.welcome-popup .checkbox-label{display:flex;gap:10px;align-items:flex-start;font-size:12px;line-height:1.5;margin:0 0 14px}
+.welcome-popup .button{width:100%;background:var(--olive);color:var(--paper)}
+.welcome-popup #welcome-message{font-size:13px;color:#9a352c;margin:10px 0 0}
+.welcome-dismiss{position:absolute;right:10px;top:8px;width:40px;height:40px;font-size:26px;border-radius:50%}
+.welcome-code{display:block;width:100%;padding:14px;margin:0 0 10px;border:1.5px dashed var(--bronze);border-radius:8px;font:700 22px Manrope,sans-serif;letter-spacing:.14em;color:var(--olive);background:#fff}
+.storefront:has(dialog[open]) .welcome-popup{display:none}
+@media(max-width:600px){
+  .whatsapp-float{right:14px;bottom:14px;width:54px;height:54px;padding:0;justify-content:center}
+  .whatsapp-float span{display:none}
+  .storefront #back-top{bottom:80px;right:19px}
+  .welcome-popup{left:12px;right:12px;bottom:12px;width:auto;padding:26px 20px 20px}
+  .welcome-popup h2{font-size:32px}
+  .look-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

@@ -49,3 +49,12 @@ npm run test:all
 ```
 
 Conferem estoque, pedidos, pagamentos, estornos, login, segurança e painel com dados temporários e um Mercado Pago simulado, sem acessar a rede. `npm run check` confere a sintaxe dos arquivos.
+
+## Recursos de venda
+
+- **Compre o look:** no editor da peça, escolha até 6 peças que combinam com ela. Elas aparecem no fim da ficha.
+- **Tabela de medidas:** medidas por tamanho, em centímetros, com colunas que você define (ex.: busto, cintura, quadril). Dá para copiar a tabela de outra peça.
+- **Outras cores:** ligue peças da mesma modelagem ou use **Criar outra cor desta peça**. A vitrine mostra um card só com as cores, e a cliente troca de cor na ficha. Cada cor tem estoque e fotos próprios.
+- **Avise-me quando chegar:** em peças ou tamanhos esgotados, a cliente deixa e-mail ou WhatsApp (com autorização). Os pedidos aparecem em **Clientes**, com botões prontos de WhatsApp e e-mail, e um aviso no painel quando a peça volta ao estoque.
+- **Pop-up de boas-vindas:** em **Loja**, ligue o pop-up e escolha um cupom (de preferência marcado como **Só na primeira compra**, que vale uma vez por e-mail). Os e-mails cadastrados ficam em **Clientes**, onde dá para copiar ou baixar a planilha.
+- **WhatsApp flutuante:** botão fixo no canto da vitrine, com o número cadastrado em Loja.

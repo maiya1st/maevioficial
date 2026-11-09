@@ -18,7 +18,9 @@ function documentId(value){
   fail(400,'Informe um CPF (11 números) ou CNPJ (14 números).');
 }
 function settings(input){
-  const s={version:input.version,name:text(input.name,'Nome da loja',100),email:text(input.email,'E-mail',254,true),whatsapp:phone(input.whatsapp),instagram:text(input.instagram,'Instagram',40,true),pickupAddress:text(input.pickupAddress,'Endereço de retirada',350,true),pickupEnabled:input.pickupEnabled,deliveryEnabled:input.deliveryEnabled,deliveryLabel:text(input.deliveryLabel,'Nome da entrega',80),deliveryCents:integer(input.deliveryCents,'Valor de entrega',0,100000),deliveryMinDays:integer(input.deliveryMinDays,'Prazo mínimo',1,90),deliveryMaxDays:integer(input.deliveryMaxDays,'Prazo máximo',1,90),freeShippingFromCents:integer(input.freeShippingFromCents,'Valor para frete grátis',0,10000000),reservationMinutes:integer(input.reservationMinutes,'Tempo de reserva',15,1440),legalName:text(input.legalName,'Nome ou razão social',150,true),documentId:documentId(input.documentId),legalAddress:text(input.legalAddress,'Endereço da empresa',300,true),policy:text(input.policy,'Política de trocas',6000,true)};
+  const s={version:input.version,name:text(input.name,'Nome da loja',100),email:text(input.email,'E-mail',254,true),whatsapp:phone(input.whatsapp),instagram:text(input.instagram,'Instagram',40,true),pickupAddress:text(input.pickupAddress,'Endereço de retirada',350,true),pickupEnabled:input.pickupEnabled,deliveryEnabled:input.deliveryEnabled,deliveryLabel:text(input.deliveryLabel,'Nome da entrega',80),deliveryCents:integer(input.deliveryCents,'Valor de entrega',0,100000),deliveryMinDays:integer(input.deliveryMinDays,'Prazo mínimo',1,90),deliveryMaxDays:integer(input.deliveryMaxDays,'Prazo máximo',1,90),freeShippingFromCents:integer(input.freeShippingFromCents,'Valor para frete grátis',0,10000000),reservationMinutes:integer(input.reservationMinutes,'Tempo de reserva',15,1440),legalName:text(input.legalName,'Nome ou razão social',150,true),documentId:documentId(input.documentId),legalAddress:text(input.legalAddress,'Endereço da empresa',300,true),policy:text(input.policy,'Política de trocas',6000,true),welcomeEnabled:input.welcomeEnabled===undefined?false:input.welcomeEnabled,welcomeCoupon:text(input.welcomeCoupon,'Cupom do pop-up',30,true).toUpperCase()};
+  if(typeof s.welcomeEnabled!=='boolean'||(s.welcomeCoupon&&!/^[A-Z0-9_-]{3,30}$/.test(s.welcomeCoupon)))fail(400,'Configuração do pop-up de boas-vindas inválida.');
+  if(s.welcomeEnabled&&!s.welcomeCoupon)fail(400,'Escolha o cupom do pop-up de boas-vindas.');
   if(s.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email))fail(400,'E-mail da loja inválido.');
   if(s.instagram&&!/^[a-zA-Z0-9._]{1,30}$/.test(s.instagram))fail(400,'Use apenas o nome do perfil do Instagram, sem @ ou URL.');
   if(typeof s.pickupEnabled!=='boolean'||typeof s.deliveryEnabled!=='boolean'||(!s.pickupEnabled&&!s.deliveryEnabled)||s.deliveryMinDays>s.deliveryMaxDays)fail(400,'Configure ao menos uma forma de recebimento e prazos válidos.');
@@ -39,7 +41,8 @@ function shipping(input,store,subtotalCents){
 }
 function coupon(input){
   const code=text(input.code,'Código do cupom',30).toUpperCase();if(!/^[A-Z0-9_-]{3,30}$/.test(code))fail(400,'Código de cupom inválido.');
-  const c={code,percent:integer(input.percent,'Desconto percentual',1,80),minCents:integer(input.minCents,'Compra mínima',0,10000000),maxUses:integer(input.maxUses,'Limite de usos',1,100000),active:input.active,expiresAt:input.expiresAt||''};
+  const c={code,percent:integer(input.percent,'Desconto percentual',1,80),minCents:integer(input.minCents,'Compra mínima',0,10000000),maxUses:integer(input.maxUses,'Limite de usos',1,100000),active:input.active,expiresAt:input.expiresAt||'',firstPurchase:input.firstPurchase===undefined?false:input.firstPurchase};
+  if(typeof c.firstPurchase!=='boolean')fail(400,'Opção de primeira compra inválida.');
   if(typeof c.active!=='boolean'||typeof c.expiresAt!=='string'||(c.expiresAt&&(!/^\d{4}-\d{2}-\d{2}T/.test(c.expiresAt)||!Number.isFinite(Date.parse(c.expiresAt)))))fail(400,'Situação ou validade do cupom inválida.');
   return c;
 }
@@ -84,4 +87,10 @@ function ownerPassword(value,email){
   if(/^(.)\1+$/.test(value)||value.toLowerCase()===email||/^(0123456789|1234567890|senha12345|maevi12345)/i.test(value))throw new Problem(400,'Escolha uma senha menos previsível.');
   return value;
 }
-module.exports={catalogDefaults,catalog,ownerEmail,ownerPassword,defaults,text,integer,cep,phone,settings,address,shipping,coupon,states};
+function contact(value){
+  if(typeof value!=='string'||!value.trim()||value.length>254)fail(400,'Informe um e-mail ou WhatsApp.');
+  const v=value.trim();
+  if(v.includes('@')){const email=v.toLowerCase();if(!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(email))fail(400,'E-mail inválido.');return {type:'email',value:email};}
+  return {type:'whatsapp',value:phone(v,false)};
+}
+module.exports={contact,catalogDefaults,catalog,ownerEmail,ownerPassword,defaults,text,integer,cep,phone,settings,address,shipping,coupon,states};

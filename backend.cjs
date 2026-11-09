@@ -125,7 +125,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     }catch(error){if(error instanceof Problem)throw error;fail(503,'Não foi possível consultar o CEP. Você pode preencher o endereço manualmente.');}
   }
   function text(value,label,max=200){if(typeof value!=='string'||!value.trim()||value.length>max||/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value))fail(400,`${label} inválido.`);return value.trim();}
-  async function quote(items,{coupon:code='',shipping:shippingInput}={}) {
+  async function quote(items,{coupon:code='',shipping:shippingInput,customer}={}) {
     if(!Array.isArray(items)||!items.length||items.length>50)fail(400,'Sua sacola precisa ter de 1 a 50 itens.');
     const normalized=new Map();
     for(const item of items){
@@ -143,7 +143,13 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     let discountCents=0,applied=null;
     if(code){if(typeof code!=='string'||!/^[A-Za-z0-9_-]{3,30}$/.test(code))fail(400,'Cupom inválido.');const c=(await getCoupon(code.toUpperCase()));
       if(!c||!c.active||(c.expiresAt&&Date.parse(c.expiresAt)<=now())||c.used>=c.maxUses)fail(409,'Cupom indisponível ou expirado.');
-      if(subtotalCents<c.minCents)fail(409,'O valor da sacola não atinge o mínimo deste cupom.');discountCents=Math.floor(subtotalCents*c.percent/100);applied={code:c.code,percent:c.percent};
+      if(subtotalCents<c.minCents)fail(409,'O valor da sacola não atinge o mínimo deste cupom.');
+      if(c.firstPurchase){
+        const email=typeof customer?.email==='string'?customer.email.trim().toLowerCase():'';
+        if(!email)fail(409,'Este cupom vale para a primeira compra. Informe seu e-mail na primeira etapa.');
+        const previous=(await db.prepare('SELECT data FROM orders').all()).map(r=>JSON.parse(r.data)).some(o=>o.customer?.email?.toLowerCase()===email&&!['demo_cancelled','demo_expired'].includes(o.status));
+        if(previous)fail(409,'Este cupom vale só para a primeira compra.');
+      }discountCents=Math.floor(subtotalCents*c.percent/100);applied={code:c.code,percent:c.percent};
     }
     const store=(await getSettings()),delivery=commerce.shipping(shippingInput,store,subtotalCents-discountCents);
     return {items:lines,subtotalCents,discountCents,coupon:applied,shippingCents:delivery.priceCents,totalCents:subtotalCents-discountCents+delivery.priceCents,shipping:delivery,fulfillment:delivery.method==='pickup'?'demo_pickup':'demo_delivery',mode:'live',settingsVersion:store.version};
@@ -172,7 +178,23 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     p.secondaryImage=optionalText(input.secondaryImage,'Segunda imagem',500);p.material=optionalText(input.material,'Composição',600);p.care=optionalText(input.care,'Cuidados',600);p.measurements=optionalText(input.measurements,'Medidas',2000);
     p.featured=input.featured===undefined?false:input.featured;if(typeof p.featured!=='boolean')fail(400,'Destaque inválido.');
     if(p.secondaryImage&&!/^https:\/\/images\.unsplash\.com\/[^\s"<>]+$/.test(p.secondaryImage)&&!/^\/assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(p.secondaryImage))fail(400,'Segunda imagem inválida. Use /assets/ ou images.unsplash.com.');
-    p.stock=Object.fromEntries(catalog.sizes.map(s=>[s,p.stock[s]]));return p;
+    p.stock=Object.fromEntries(catalog.sizes.map(s=>[s,p.stock[s]]));
+    // Compre o look: até 6 peças que combinam.
+    const look=input.look===undefined?[]:input.look;
+    if(!Array.isArray(look)||look.length>6||!look.every(v=>Number.isSafeInteger(v)&&v>0&&v!==id))fail(400,'Escolha até 6 peças para o look.');
+    p.look=[...new Set(look)];
+    // Cores da mesma peça: produtos com o mesmo grupo aparecem juntos na ficha.
+    p.colorGroup=input.colorGroup===undefined||input.colorGroup===''?'':input.colorGroup;
+    if(typeof p.colorGroup!=='string'||(p.colorGroup&&!/^[a-z0-9-]{1,40}$/.test(p.colorGroup)))fail(400,'Grupo de cores inválido.');
+    // Tabela de medidas por tamanho.
+    p.sizeChart=null;const chart=input.sizeChart;
+    if(chart!==undefined&&chart!==null){
+      const cell=(v,max)=>typeof v==='string'&&v.length<=max&&!/[<>\x00-\x1f]/.test(v);
+      if(typeof chart!=='object'||!Array.isArray(chart.columns)||chart.columns.length<1||chart.columns.length>6||!chart.columns.every(c=>cell(c,20)&&c.trim())||!chart.rows||typeof chart.rows!=='object'||Array.isArray(chart.rows))fail(400,'Tabela de medidas inválida.');
+      const rows={};for(const [size,values] of Object.entries(chart.rows)){if(!catalog.sizes.includes(size))continue;if(!Array.isArray(values)||values.length!==chart.columns.length||!values.every(v=>cell(v,12)))fail(400,'Tabela de medidas inválida.');if(values.some(v=>v.trim()))rows[size]=values.map(v=>v.trim());}
+      if(Object.keys(rows).length)p.sizeChart={columns:chart.columns.map(c=>c.trim()),rows};
+    }
+    return p;
   }
   const OPEN_ORDER=['demo_received','demo_payment_pending','demo_payment_review','demo_paid','demo_preparing','demo_ready'];
   async function removeUnusedImages(candidates){
@@ -182,6 +204,11 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
       if(databaseImages)await db.prepare('DELETE FROM images WHERE name=?').run(match[1]);
       else{try{fs.unlinkSync(path.join(assetDir,match[1]));}catch{}}
     }
+  }
+  async function publicStore(){
+    const store=await getSettings(),{welcomeCoupon,...rest}=store;let welcome=null;
+    if(store.welcomeEnabled&&welcomeCoupon){const c=await getCoupon(welcomeCoupon);if(c&&c.active&&!(c.expiresAt&&Date.parse(c.expiresAt)<=now())&&c.used<c.maxUses)welcome={percent:c.percent,minCents:c.minCents};}
+    return {...rest,welcome};
   }
   async function handler(req,res){
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');
@@ -227,8 +254,36 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
         (await runMaintenance());
         if(req.method==='GET'&&route==='/api/health')return send(res,200,{ok:true,mode:'live'});
         if(req.method==='GET'&&route==='/api/products'){const catalog=await getCatalog();return send(res,200,{products:(await allProducts()).filter(p=>p.active),catalog:{categories:catalog.categories,sizes:catalog.sizes},mode:'live'});}
-        if(req.method==='GET'&&route==='/api/store')return send(res,200,{store:(await getSettings()),mode:'live',payment:payments.options()});
+        if(req.method==='GET'&&route==='/api/store')return send(res,200,{store:await publicStore(),mode:'live',payment:payments.options()});
         if(req.method==='GET'&&/^\/api\/postal-code\/\d{8}$/.test(route)){rate(req,'postal',20);return send(res,200,{address:await postalLookup(route.split('/').pop())});}
+        if(req.method==='POST'&&route==='/api/alerts'){
+          rate(req,'alerts',10);const input=await body(req);
+          if(input.consent!==true)fail(400,'Autorize o aviso para continuar.');
+          const p=Number.isSafeInteger(input.productId)?await getProduct(input.productId):null;if(!p||!p.active)fail(404,'Peça não encontrada.');
+          if(typeof input.size!=='string'||!Object.hasOwn(p.stock,input.size))fail(400,'Escolha o tamanho.');
+          const who=commerce.contact(input.contact);
+          const result=await transaction(async()=>{
+            const existing=(await db.prepare('SELECT data FROM alerts').all()).map(r=>JSON.parse(r.data)).find(a=>a.status==='pending'&&a.productId===p.id&&a.size===input.size&&a.contact===who.value);
+            if(existing)return existing;
+            const count=Number((await db.prepare('SELECT COUNT(*) AS n FROM alerts').get()).n);if(count>=5000)fail(409,'Não foi possível registrar agora. Fale com a loja pelo WhatsApp.');
+            const a={id:'AV-'+crypto.randomBytes(8).toString('hex').toUpperCase(),productId:p.id,productName:p.name,color:p.color,size:input.size,contact:who.value,type:who.type,status:'pending',createdAt:new Date(now()).toISOString()};
+            await db.prepare('INSERT INTO alerts(id,data) VALUES(?,?)').run(a.id,JSON.stringify(a));return a;
+          });
+          return send(res,201,{ok:true,size:result.size});
+        }
+        if(req.method==='POST'&&route==='/api/subscribers'){
+          rate(req,'subscribers',10);const input=await body(req);
+          if(input.consent!==true)fail(400,'Autorize o cadastro para receber o cupom.');
+          const who=commerce.contact(input.email);if(who.type!=='email')fail(400,'Informe um e-mail válido.');
+          await transaction(async()=>{
+            const row=await db.prepare('SELECT data FROM subscribers WHERE email=?').get(who.value);if(row)return;
+            const count=Number((await db.prepare('SELECT COUNT(*) AS n FROM subscribers').get()).n);if(count>=20000)fail(409,'Não foi possível cadastrar agora.');
+            await db.prepare('INSERT INTO subscribers(email,data) VALUES(?,?)').run(who.value,JSON.stringify({email:who.value,createdAt:new Date(now()).toISOString(),source:'welcome'}));
+          });
+          const store=await getSettings();let coupon=null;
+          if(store.welcomeEnabled&&store.welcomeCoupon){const c=await getCoupon(store.welcomeCoupon);if(c&&c.active&&!(c.expiresAt&&Date.parse(c.expiresAt)<=now())&&c.used<c.maxUses)coupon={code:c.code,percent:c.percent,minCents:c.minCents,firstPurchase:c.firstPurchase};}
+          return send(res,201,{ok:true,coupon});
+        }
         if(req.method==='POST'&&route==='/api/quote'){rate(req,'quote',120);const input=await body(req);return send(res,200,(await quote(input.items,input)));}
         if(req.method==='POST'&&route==='/api/orders'){
           rate(req,'orders',30);const input=await body(req);
@@ -366,11 +421,25 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             await transaction(async()=>{if(!(await getCoupon(code)))fail(404,'Cupom não encontrado.');await db.prepare('DELETE FROM coupons WHERE code=?').run(code);await record('deleted','coupon',code);});
             return send(res,200,{deleted:{code}});
           }
+          if(route==='/api/admin/alerts'&&req.method==='GET')return send(res,200,{alerts:(await db.prepare('SELECT data FROM alerts').all()).map(r=>JSON.parse(r.data)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))});
+          if(/^\/api\/admin\/alerts\/AV-[A-F0-9]{16}$/.test(route)&&(req.method==='PATCH'||req.method==='DELETE')){
+            const id=route.split('/').pop(),input=await body(req);
+            await transaction(async()=>{const row=await db.prepare('SELECT data FROM alerts WHERE id=?').get(id);if(!row)fail(404,'Aviso não encontrado.');
+              if(req.method==='DELETE'){await db.prepare('DELETE FROM alerts WHERE id=?').run(id);return;}
+              if(!['pending','notified'].includes(input.status))fail(400,'Situação inválida.');const a=JSON.parse(row.data);a.status=input.status;a.notifiedAt=input.status==='notified'?new Date(now()).toISOString():null;
+              await db.prepare('UPDATE alerts SET data=? WHERE id=?').run(JSON.stringify(a),id);});
+            return send(res,200,{ok:true});
+          }
+          if(route==='/api/admin/subscribers'&&req.method==='GET')return send(res,200,{subscribers:(await db.prepare('SELECT data FROM subscribers').all()).map(r=>JSON.parse(r.data)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))});
+          if(route==='/api/admin/subscribers'&&req.method==='DELETE'){
+            const input=await body(req);if(typeof input.email!=='string'||input.email.length>254)fail(400,'E-mail inválido.');
+            await db.prepare('DELETE FROM subscribers WHERE email=?').run(input.email.trim().toLowerCase());return send(res,200,{ok:true});
+          }
           if(route==='/api/admin/orders'&&req.method==='GET')return send(res,200,{orders:(await db.prepare('SELECT data FROM orders ORDER BY rowid DESC LIMIT 200').all()).map(r=>JSON.parse(r.data))});
           if(route==='/api/admin/activity'&&req.method==='GET')return send(res,200,{activity:(await db.prepare('SELECT at,action,entity,entity_id FROM activity ORDER BY id DESC LIMIT 100').all())});
           if(route==='/api/admin/settings'&&req.method==='GET')return send(res,200,{store:(await getSettings()),payment:payments.options()});
           if(route==='/api/admin/settings'&&req.method==='PUT'){
-            const input=await body(req);const store=(await transaction(async()=>{const current=(await getSettings());if(input.version!==current.version)fail(409,'As configurações mudaram. Atualize os dados antes de salvar.');const value=commerce.settings(input);value.version=current.version+1;(await db.prepare('UPDATE settings SET data=? WHERE key=?').run(JSON.stringify(value),'store'));(await record('updated','settings','store'));return value;}));return send(res,200,{store});
+            const input=await body(req);const store=(await transaction(async()=>{const current=(await getSettings());if(input.version!==current.version)fail(409,'As configurações mudaram. Atualize os dados antes de salvar.');const value=commerce.settings(input);if(value.welcomeEnabled&&!(await getCoupon(value.welcomeCoupon)))fail(400,'O cupom do pop-up não existe. Crie o cupom antes em Cupons.');value.version=current.version+1;(await db.prepare('UPDATE settings SET data=? WHERE key=?').run(JSON.stringify(value),'store'));(await record('updated','settings','store'));return value;}));return send(res,200,{store});
           }
           if(route==='/api/admin/coupons'&&req.method==='GET')return send(res,200,{coupons:(await db.prepare('SELECT data FROM coupons ORDER BY code').all()).map(r=>JSON.parse(r.data))});
           if(route==='/api/admin/coupons'&&req.method==='POST'){
