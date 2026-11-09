@@ -163,7 +163,7 @@ gl_FragColor=vec4(col,1.);}`;
         front = f; const p = items[f]; if (!p) return;
         cards.forEach((c, i) => c.classList.toggle('is-front', i === f));
         const esc = store().escapeHTML, available = Object.values(p.stock || {}).some(n => n > 0);
-        caption.innerHTML = `<p class="orbit-cat">${esc(p.category)}${available ? '' : ' · esgotado'}</p><h3>${esc(p.name)}</h3><p class="orbit-price">${store().money(p.priceCents)}</p><button type="button" class="button light" data-orbit-open="${p.id}">Conhecer a peça <span aria-hidden="true">↗</span></button>`;
+        caption.innerHTML = `<p class="orbit-cat">${esc(p.category)}${available ? '' : ' · esgotado'}</p><h3>${esc(p.name)}</h3><p class="orbit-price">${store().money(p.priceCents)}</p><button type="button" class="button light" data-orbit-open="${p.id}">Conhecer a peça <span aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg></span></button>`;
         if (ghost) ghost.textContent = p.name;
       }
     }
