@@ -20,7 +20,7 @@ async function loadProducts(){
   try{products=(await api('/api/products')).products;
     const original=cart.length;cart=cart.filter(i=>products.some(p=>p.id===i.id));
     if(original!==cart.length){saveCart();toast('Peças indisponíveis foram removidas da sacola.');}
-    $('#catalog-status').textContent='';renderProducts();renderCart();if(!deepLinkHandled){deepLinkHandled=true;const id=new URLSearchParams(location.search).get('produto');if(id&&/^\d+$/.test(id))openProduct(Number(id));}return true;
+    $('#catalog-status').textContent='';renderProducts();renderCart();document.dispatchEvent(new CustomEvent('maevi:products'));if(!deepLinkHandled){deepLinkHandled=true;const id=new URLSearchParams(location.search).get('produto');if(id&&/^\d+$/.test(id))openProduct(Number(id));}return true;
   }catch(error){$('#catalog-status').textContent=error.message;$('#retry-catalog').hidden=false;if(!products.length)$('#products').innerHTML='';return false;}finally{$('#products').setAttribute('aria-busy','false');}
 }
 function renderProducts(){
@@ -95,5 +95,5 @@ function openCart(){renderCart();$('#cart-dialog').showModal();}
 $('#cart-open').addEventListener('click',openCart);$('#footer-bag').addEventListener('click',openCart);
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.close).close()));
 document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}}));
-window.MaeviStore=Object.freeze({api,money,escapeHTML,toast,openCart,getCart:()=>cart.map(i=>({...i})),getProducts:()=>products,emptyCart:()=>{cart=[];saveCart();},refreshCatalog:loadProducts,getLastOrder:()=>lastOrder,rememberOrder:value=>{lastOrder=value;try{sessionStorage.setItem('maevi-last-order',JSON.stringify(value));}catch{}}});
+window.MaeviStore=Object.freeze({api,money,escapeHTML,toast,openCart,openProduct,getCart:()=>cart.map(i=>({...i})),getProducts:()=>products,emptyCart:()=>{cart=[];saveCart();},refreshCatalog:loadProducts,getLastOrder:()=>lastOrder,rememberOrder:value=>{lastOrder=value;try{sessionStorage.setItem('maevi-last-order',JSON.stringify(value));}catch{}}});
 $('#year').textContent=new Date().getFullYear();setCategory('Todas');renderCart();loadProducts();

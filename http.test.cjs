@@ -22,7 +22,7 @@ test('HTTP real em loopback: vitrine, painel e parser',async t=>{
     });
   }
   await t.test('todos os assets e documentos carregam com MIME correto',async()=>{
-    for(const [route,mime] of [['/','text/html'],['/admin','text/html'],['/styles.css','text/css'],['/boutique.css','text/css'],['/checkout.css','text/css'],['/app.js','text/javascript'],['/checkout.js','text/javascript'],['/contacts.js','text/javascript'],['/operations.js','text/javascript'],['/experience.js','text/javascript'],['/catalog-core.js','text/javascript'],['/admin.js','text/javascript'],['/admin.css','text/css'],['/assets/logo-maevi.png','image/png']]){
+    for(const [route,mime] of [['/','text/html'],['/admin','text/html'],['/styles.css','text/css'],['/boutique.css','text/css'],['/checkout.css','text/css'],['/app.js','text/javascript'],['/checkout.js','text/javascript'],['/contacts.js','text/javascript'],['/operations.js','text/javascript'],['/experience.js','text/javascript'],['/immersive.js','text/javascript'],['/immersive.css','text/css'],['/catalog-core.js','text/javascript'],['/admin.js','text/javascript'],['/admin.css','text/css'],['/assets/logo-maevi.png','image/png']]){
       const r=await request(route);assert.equal(r.status,200,route);assert.ok(r.headers['content-type'].startsWith(mime),route);
     }
   });

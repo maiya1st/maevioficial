@@ -113,3 +113,7 @@ A chave do painel online e os campos da hospedagem estão no arquivo privado .en
 ## Redesign da vitrine · 09/11/2026
 
 Base neutra (areia/papel) com oliva e rosé nos detalhes; títulos em Cormorant Garamond e textos em Manrope com corpo mínimo de 11–15px. Home abre com uma única foto forte (no celular, imagem em tela cheia com chamada e botão sobrepostos), categorias Vestidos, Conjuntos e Blusas, e vitrine com fotos em 3:4, categoria, nome, preço e cor. A ficha da peça organiza galeria deslizável, preço, cor, tamanhos em grade, botão principal e atalho "Tirar dúvidas no WhatsApp" com o nome da peça e o tamanho já preenchidos (usa o número cadastrado no painel). No celular, a ficha ocupa a tela inteira e o botão de compra fica fixo no rodapé. Os estilos novos estão no fim de `boutique.css`.
+
+## Camada imersiva · v0.8
+
+`immersive.js` e `immersive.css` adicionam: abertura com "seda líquida" em WebGL nas cores da marca (reage ao mouse e pausa fora da tela), portal em arco com halos 3D e título animado palavra por palavra, faixa cinética que inclina com a rolagem, **vitrine em órbita** (carrossel 3D girado por arraste, toque, setas ou teclado; a peça da frente abre a ficha), cartões com inclinação 3D e brilho holográfico, entradas 3D ao rolar, cursor em anel e botões magnéticos no computador. Sem bibliotecas externas. Com "reduzir movimento" ativado no sistema, as animações param e o conteúdo fica estático. Sem WebGL, a abertura usa um gradiente animado.
