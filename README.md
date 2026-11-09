@@ -117,3 +117,10 @@ Base neutra (areia/papel) com oliva e rosé nos detalhes; títulos em Cormorant 
 ## Camada imersiva · v0.8
 
 `immersive.js` e `immersive.css` adicionam: abertura com "seda líquida" em WebGL nas cores da marca (reage ao mouse e pausa fora da tela), portal em arco com halos 3D e título animado palavra por palavra, faixa cinética que inclina com a rolagem, **vitrine em órbita** (carrossel 3D girado por arraste, toque, setas ou teclado; a peça da frente abre a ficha), cartões com inclinação 3D e brilho holográfico, entradas 3D ao rolar, cursor em anel e botões magnéticos no computador. Sem bibliotecas externas. Com "reduzir movimento" ativado no sistema, as animações param e o conteúdo fica estático. Sem WebGL, a abertura usa um gradiente animado.
+
+## Painel da loja · v0.9
+
+- **Login com e-mail e senha.** No primeiro acesso, entre em `/admin` com a chave (`MAEVI_ADMIN_KEY` na Hostinger ou `data/admin-key.txt` no local) e crie seu e-mail e senha em **Minha conta**. A senha é guardada com scrypt (nunca em texto). A chave continua valendo para recuperar o acesso. Trocar a senha desconecta os outros aparelhos.
+- **Categorias e tamanhos configuráveis** em **Categorias e tamanhos**: criar, renomear (as peças acompanham), reordenar e remover (só sem peças / com estoque zerado). A vitrine monta filtros, menu, cards de categoria e tamanhos da ficha a partir dessa lista.
+- **Cadastro de peça** com fotos por arrastar e soltar, prévia ao vivo do card, estoque com botões + e −, e ação rápida de ocultar/mostrar.
+- Testes novos em `owner.test.cjs`.

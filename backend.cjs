@@ -30,10 +30,15 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   const transaction=fn=>db.transaction(fn);
   const record=async (action,entity,id)=>(await db.prepare('INSERT INTO activity(at,action,entity,entity_id) VALUES(?,?,?,?)').run(new Date(now()).toISOString(),action,entity,String(id)));
   const getSettings=async ()=>JSON.parse((await db.prepare('SELECT data FROM settings WHERE key=?').get('store')).data);
+  const getSetting=async key=>{const row=await db.prepare('SELECT data FROM settings WHERE key=?').get(key);return row?JSON.parse(row.data):null;};
+  const putSetting=async (key,value)=>{if(await db.prepare('SELECT data FROM settings WHERE key=?').get(key))await db.prepare('UPDATE settings SET data=? WHERE key=?').run(JSON.stringify(value),key);else await db.prepare(db.kind==='mysql'?'INSERT INTO settings(`key`,data) VALUES(?,?)':'INSERT INTO settings(key,data) VALUES(?,?)').run(key,JSON.stringify(value));};
+  const getCatalog=async()=>{const value=await getSetting('catalog');return value?{categories:value.categories,sizes:value.sizes,version:value.version}:{...commerce.catalogDefaults,version:0};};
+  const scrypt=(password,salt)=>new Promise((resolve,reject)=>crypto.scrypt(password,salt,64,{N:16384,r:8,p:1,maxmem:67108864},(error,key)=>error?reject(error):resolve(key)));
+  async function passwordMatches(password,owner){if(typeof password!=='string'||password.length>200||!owner?.hash)return false;const key=await scrypt(password,Buffer.from(owner.salt,'hex'));return crypto.timingSafeEqual(key,Buffer.from(owner.hash,'hex'));}
   const getCoupon=async code=>{const row=(await db.prepare('SELECT data FROM coupons WHERE code=?').get(code));return row?JSON.parse(row.data):null;};
   const saveCoupon=async c=>(await db.prepare('INSERT INTO coupons(code,data) VALUES(?,?) ON CONFLICT(code) DO UPDATE SET data=excluded.data').run(c.code,JSON.stringify(c)));
   async function restore(order){
-    for(const item of order.items){const p=(await getProduct(item.id));if(p){p.stock[item.size]+=item.quantity;(await saveProduct(p));}}
+    for(const item of order.items){const p=(await getProduct(item.id));if(p&&Object.hasOwn(p.stock,item.size)){p.stock[item.size]+=item.quantity;(await saveProduct(p));}}
     if(order.coupon?.code){const c=(await getCoupon(order.coupon.code));if(c&&c.used>0){c.used--;(await saveCoupon(c));}}
   }
   async function changeOrder(order,status){
@@ -112,14 +117,14 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     if(!Array.isArray(items)||!items.length||items.length>50)fail(400,'Sua sacola precisa ter de 1 a 50 itens.');
     const normalized=new Map();
     for(const item of items){
-      if(!item||!Number.isSafeInteger(item.id)||item.id<1||!['P','M','G','GG'].includes(item.size)||!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>20)fail(400,'Item ou quantidade inválida.');
+      if(!item||!Number.isSafeInteger(item.id)||item.id<1||typeof item.size!=='string'||!item.size||item.size.length>10||!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>20)fail(400,'Item ou quantidade inválida.');
       const key=`${item.id}:${item.size}`, previous=normalized.get(key);
       normalized.set(key,{id:item.id,size:item.size,quantity:item.quantity+(previous?.quantity||0)});
     }
     const lines=[];for(const item of normalized.values()){
       const p=(await getProduct(item.id));
       if(!p||!p.active)fail(409,'Uma peça não está mais disponível. Atualize sua sacola.');
-      if(item.quantity>20||p.stock[item.size]<item.quantity)fail(409,`Estoque insuficiente: ${p.name}, tamanho ${item.size}.`);
+      if(item.quantity>20||!Object.hasOwn(p.stock,item.size)||!(p.stock[item.size]>=item.quantity))fail(409,`Estoque insuficiente: ${p.name}, tamanho ${item.size}.`);
       lines.push({...item,name:p.name,color:p.color,unitCents:p.priceCents,lineCents:p.priceCents*item.quantity});
     }
     const subtotalCents=lines.reduce((sum,item)=>sum+item.lineCents,0);
@@ -141,21 +146,21 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   }
   const send=(res,status,data,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...headers});res.end(JSON.stringify(data));};
   const sessionToken=req=>(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('maevi_session='))?.slice(14);
-  function authenticated(req){const token=sessionToken(req),key=token?hash(token):'',session=sessions.get(key),time=now();if(!session||session.expires<=time||session.lastSeen+30*60*1000<=time){sessions.delete(key);fail(401,'Entre no painel para continuar.');}session.lastSeen=time;}
+  function authenticated(req){const token=sessionToken(req),key=token?hash(token):'',session=sessions.get(key),time=now();if(!session||session.expires<=time||session.lastSeen+30*60*1000<=time){sessions.delete(key);fail(401,'Entre no painel para continuar.');}session.lastSeen=time;return session;}
   function rate(req,group,max){
     const time=now();for(const [key,entry] of limits)if(entry.until<=time)limits.delete(key);
     const key=`${req.socket?.remoteAddress||'local'}:${group}`,entry=limits.get(key)||{count:0,until:time+60000};entry.count++;limits.set(key,entry);if(entry.count>max)fail(429,'Muitas tentativas. Aguarde um minuto.');
   }
-  function validateProduct(input,id){
+  function validateProduct(input,id,catalog){
     const p={id,name:text(input.name,'Nome',100),category:input.category,color:text(input.color,'Cor',60),hex:input.hex,description:text(input.description,'Descrição',2000),image:text(input.image,'Imagem',500),priceCents:input.priceCents,stock:input.stock,active:input.active};
-    if(!['Vestidos','Conjuntos','Blusas'].includes(p.category)||typeof p.hex!=='string'||!/^#[0-9a-f]{6}$/i.test(p.hex)||!Number.isInteger(p.priceCents)||p.priceCents<1||p.priceCents>10000000||typeof p.active!=='boolean')fail(400,'Categoria, preço, cor ou disponibilidade inválidos.');
-    if(!p.stock||!['P','M','G','GG'].every(s=>Number.isInteger(p.stock[s])&&p.stock[s]>=0&&p.stock[s]<=10000))fail(400,'Informe o estoque por tamanho.');
+    if(!catalog.categories.includes(p.category)||typeof p.hex!=='string'||!/^#[0-9a-f]{6}$/i.test(p.hex)||!Number.isInteger(p.priceCents)||p.priceCents<1||p.priceCents>10000000||typeof p.active!=='boolean')fail(400,'Categoria, preço, cor ou disponibilidade inválidos.');
+    if(!p.stock||typeof p.stock!=='object'||!catalog.sizes.every(s=>Object.hasOwn(p.stock,s)&&Number.isInteger(p.stock[s])&&p.stock[s]>=0&&p.stock[s]<=10000))fail(400,'Informe o estoque por tamanho.');
     if(!/^https:\/\/images\.unsplash\.com\/[^\s"<>]+$/.test(p.image)&&!/^\/assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(p.image))fail(400,'Use uma imagem em /assets/ ou HTTPS do images.unsplash.com.');
     const optionalText=(value,label,max)=>value===undefined||value===''?'':text(value,label,max);
     p.secondaryImage=optionalText(input.secondaryImage,'Segunda imagem',500);p.material=optionalText(input.material,'Composição',600);p.care=optionalText(input.care,'Cuidados',600);p.measurements=optionalText(input.measurements,'Medidas',2000);
     p.featured=input.featured===undefined?false:input.featured;if(typeof p.featured!=='boolean')fail(400,'Destaque inválido.');
     if(p.secondaryImage&&!/^https:\/\/images\.unsplash\.com\/[^\s"<>]+$/.test(p.secondaryImage)&&!/^\/assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(p.secondaryImage))fail(400,'Segunda imagem inválida. Use /assets/ ou images.unsplash.com.');
-    p.stock=Object.fromEntries(['P','M','G','GG'].map(s=>[s,p.stock[s]]));return p;
+    p.stock=Object.fromEntries(catalog.sizes.map(s=>[s,p.stock[s]]));return p;
   }
   async function handler(req,res){
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');
@@ -200,7 +205,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
         if(req.method!=='GET'&&req.headers['x-maevi-request']!=='1')fail(403,'Atualize a página da loja antes de continuar.');
         (await runMaintenance());
         if(req.method==='GET'&&route==='/api/health')return send(res,200,{ok:true,mode:'demo'});
-        if(req.method==='GET'&&route==='/api/products')return send(res,200,{products:(await allProducts()).filter(p=>p.active),mode:'demo'});
+        if(req.method==='GET'&&route==='/api/products'){const catalog=await getCatalog();return send(res,200,{products:(await allProducts()).filter(p=>p.active),catalog:{categories:catalog.categories,sizes:catalog.sizes},mode:'demo'});}
         if(req.method==='GET'&&route==='/api/store')return send(res,200,{store:(await getSettings()),mode:'demo',payment:payments.options()});
         if(req.method==='GET'&&/^\/api\/postal-code\/\d{8}$/.test(route)){rate(req,'postal',20);return send(res,200,{address:await postalLookup(route.split('/').pop())});}
         if(req.method==='POST'&&route==='/api/quote'){rate(req,'quote',120);const input=await body(req);return send(res,200,(await quote(input.items,input)));}
@@ -245,16 +250,21 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
           return send(res,200,{order:(await transaction(async()=>{const current=JSON.parse((await db.prepare('SELECT data FROM orders WHERE id=?').get(order.id)).data);if(current.status!=='demo_received')fail(409,'Este pedido não pode mais ser cancelado por aqui.');return (await changeOrder(current,'demo_cancelled'));}))});
         }
         if(route==='/api/admin/login'&&req.method==='POST'){
-          rate(req,'login',10);const input=await body(req);
-          if(typeof input.key!=='string'||!same(input.key,adminKey))fail(401,'Chave de acesso inválida.');
+          rate(req,'login',10);const input=await body(req);let method;
+          if(typeof input.email==='string'||typeof input.password==='string'){
+            const owner=await getSetting('owner'),email=typeof input.email==='string'?input.email.trim().toLowerCase():'';
+            const valid=owner&&email===owner.email&&(await passwordMatches(input.password,owner));
+            if(!owner)await scrypt('timing-placeholder',crypto.randomBytes(16));
+            if(!valid)fail(401,'E-mail ou senha incorretos.');method='password';
+          }else{if(typeof input.key!=='string'||!same(input.key,adminKey))fail(401,'Chave de acesso inválida.');method='key';}
           for(const [key,session] of sessions)if(session.expires<=now()||session.lastSeen+30*60*1000<=now())sessions.delete(key);
           const previous=sessionToken(req);if(previous)sessions.delete(hash(previous));
           if(sessions.size>=32)sessions.delete(sessions.keys().next().value);
-          const token=crypto.randomBytes(32).toString('hex');sessions.set(hash(token),{expires:now()+8*60*60*1000,lastSeen:now()});
-          return send(res,200,{ok:true},{'Set-Cookie':`maevi_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=28800${secureCookie}`});
+          const token=crypto.randomBytes(32).toString('hex');sessions.set(hash(token),{expires:now()+8*60*60*1000,lastSeen:now(),method});
+          return send(res,200,{ok:true,method},{'Set-Cookie':`maevi_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=28800${secureCookie}`});
         }
         if(route.startsWith('/api/admin/')){
-          authenticated(req);
+          const session=authenticated(req),currentToken=hash(sessionToken(req));
           if(route==='/api/admin/images'&&req.method==='POST'){
             rate(req,'upload',10);const type=req.headers['content-type'];if(!['image/jpeg','image/png','image/webp'].includes(type))fail(415,'Envie uma imagem JPG, PNG ou WebP.');
             if(Number(req.headers['content-length']||0)>4194304)fail(413,'A foto deve ter no máximo 4 MB.');
@@ -271,12 +281,45 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             fs.writeFileSync(path.join(directory,name),bytes,{flag:'wx'});(await record('uploaded','image',name));return send(res,201,{image:'/assets/'+name,width:info.width,height:info.height});
           }
           if(route==='/api/admin/logout'&&req.method==='POST'){sessions.delete(hash(sessionToken(req)));return send(res,200,{ok:true},{'Set-Cookie':'maevi_session=; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=0'+secureCookie});}
+          if(route==='/api/admin/account'&&req.method==='GET'){const owner=await getSetting('owner');return send(res,200,{account:{email:owner?.email||'',configured:Boolean(owner),updatedAt:owner?.updatedAt||null},session:{method:session.method}});}
+          if(route==='/api/admin/account'&&req.method==='PUT'){
+            rate(req,'account',10);const input=await body(req),owner=await getSetting('owner');
+            if(owner&&session.method!=='key'&&!(await passwordMatches(input.currentPassword,owner)))fail(401,'Senha atual incorreta.');
+            const email=commerce.ownerEmail(input.email),password=commerce.ownerPassword(input.password,email);
+            const salt=crypto.randomBytes(16);const value={email,salt:salt.toString('hex'),hash:(await scrypt(password,salt)).toString('hex'),updatedAt:new Date(now()).toISOString(),version:(owner?.version||0)+1};
+            await transaction(async()=>{await putSetting('owner',value);await record(owner?'updated':'created','account','owner');});
+            for(const key of sessions.keys())if(key!==currentToken)sessions.delete(key);
+            return send(res,200,{account:{email,configured:true,updatedAt:value.updatedAt}});
+          }
+          if(route==='/api/admin/catalog'&&req.method==='GET')return send(res,200,{catalog:await getCatalog()});
+          if(route==='/api/admin/catalog'&&req.method==='PUT'){
+            const input=await body(req);const catalog=await transaction(async()=>{
+              const current=await getCatalog();if(input.version!==current.version)fail(409,'Categorias ou tamanhos mudaram. Atualize os dados antes de salvar.');
+              const next=commerce.catalog(input,current),list=await allProducts(),changed=new Set();
+              for(const p of list){
+                const category=next.renames.categories[p.category]??p.category;
+                if(category!==p.category){p.category=category;changed.add(p);}
+                const stock={};for(const [size,count] of Object.entries(p.stock)){const target=next.renames.sizes[size]??size;stock[target]=(stock[target]||0)+count;}
+                if(JSON.stringify(stock)!==JSON.stringify(p.stock)){p.stock=stock;changed.add(p);}
+              }
+              const missingCategory=list.find(p=>!next.categories.includes(p.category));
+              if(missingCategory)fail(409,`A categoria "${missingCategory.category}" ainda tem peças (ex.: ${missingCategory.name}). Mude a categoria dessas peças antes de removê-la.`);
+              for(const p of list){
+                const removed=Object.keys(p.stock).filter(size=>!next.sizes.includes(size));
+                const stocked=removed.find(size=>p.stock[size]>0);if(stocked)fail(409,`O tamanho ${stocked} ainda tem estoque na peça ${p.name}. Zere o estoque antes de removê-lo.`);
+                const stock=Object.fromEntries(next.sizes.map(size=>[size,Number.isInteger(p.stock[size])?p.stock[size]:0]));
+                if(JSON.stringify(stock)!==JSON.stringify(p.stock)){p.stock=stock;changed.add(p);}
+              }
+              for(const p of changed)await saveProduct(p);
+              const value={categories:next.categories,sizes:next.sizes,version:current.version+1};await putSetting('catalog',value);await record('updated','catalog','catalog');return value;
+            });return send(res,200,{catalog});
+          }
           if(route==='/api/admin/products'&&req.method==='GET')return send(res,200,{products:(await allProducts())});
           if(route==='/api/admin/products'&&req.method==='POST'){
-            const input=await body(req);const p=(await transaction(async()=>{const id=Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM products').get()).id);const value=validateProduct(input,id);(await saveProduct(value));(await record('created','product',id));return value;}));return send(res,201,{product:p});
+            const input=await body(req);const p=(await transaction(async()=>{const id=Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM products').get()).id);const value=validateProduct(input,id,(await getCatalog()));(await saveProduct(value));(await record('created','product',id));return value;}));return send(res,201,{product:p});
           }
           if(/^\/api\/admin\/products\/\d+$/.test(route)&&req.method==='PUT'){
-            const id=Number(route.split('/').pop()),input=await body(req);const p=(await transaction(async()=>{const current=(await getProduct(id));if(!current)fail(404,'Peça não encontrada.');if(input.version!==(current.version||0))fail(409,'Esta peça mudou desde a abertura. Feche a edição, atualize os dados e tente novamente.');const value=validateProduct(input,id);value.version=current.version||0;(await saveProduct(value));(await record('updated','product',id));return value;}));return send(res,200,{product:p});
+            const id=Number(route.split('/').pop()),input=await body(req);const p=(await transaction(async()=>{const current=(await getProduct(id));if(!current)fail(404,'Peça não encontrada.');if(input.version!==(current.version||0))fail(409,'Esta peça mudou desde a abertura. Feche a edição, atualize os dados e tente novamente.');const value=validateProduct(input,id,(await getCatalog()));value.version=current.version||0;(await saveProduct(value));(await record('updated','product',id));return value;}));return send(res,200,{product:p});
           }
           if(route==='/api/admin/orders'&&req.method==='GET')return send(res,200,{orders:(await db.prepare('SELECT data FROM orders ORDER BY rowid DESC LIMIT 200').all()).map(r=>JSON.parse(r.data))});
           if(route==='/api/admin/activity'&&req.method==='GET')return send(res,200,{activity:(await db.prepare('SELECT at,action,entity,entity_id FROM activity ORDER BY id DESC LIMIT 100').all())});
