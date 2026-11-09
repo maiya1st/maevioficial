@@ -331,20 +331,19 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             const id=Number(route.split('/').pop()),input=await body(req);const p=(await transaction(async()=>{const current=(await getProduct(id));if(!current)fail(404,'Peça não encontrada.');if(input.version!==(current.version||0))fail(409,'Esta peça mudou desde a abertura. Feche a edição, atualize os dados e tente novamente.');const value=validateProduct(input,id,(await getCatalog()));value.version=current.version||0;(await saveProduct(value));(await record('updated','product',id));return value;}));return send(res,200,{product:p});
           }
           if(/^\/api\/admin\/products\/\d+$/.test(route)&&req.method==='DELETE'){
-            const id=Number(route.split('/').pop());
+            const id=Number(route.split('/').pop()),force=(await body(req)).force===true;
             const removed=await transaction(async()=>{
               const current=await getProduct(id);if(!current)fail(404,'Peça não encontrada.');
               const open=(await db.prepare(`SELECT data FROM orders WHERE json_extract(data,'$.status') IN (${OPEN_ORDER.map(()=>'?').join(',')})`).all(...OPEN_ORDER)).map(r=>JSON.parse(r.data)).find(o=>o.items.some(i=>i.id===id));
-              if(open)fail(409,`A peça ${current.name} está no pedido ${open.id}, ainda em andamento. Conclua ou cancele o pedido antes de excluir.`);
+              if(open&&!force)fail(409,`A peça ${current.name} está no pedido ${open.id}, ainda em andamento. Confirme para excluir mesmo assim: o pedido continua registrado.`);
               await db.prepare('DELETE FROM products WHERE id=?').run(id);await removeUnusedImages([current.image,current.secondaryImage]);await record('deleted','product',id);return current;
             });return send(res,200,{deleted:{id:removed.id,name:removed.name}});
           }
           if(/^\/api\/admin\/orders\/MV-[A-F0-9]{16}$/.test(route)&&req.method==='DELETE'){
-            const id=route.split('/').pop();
+            const id=route.split('/').pop(),force=(await body(req)).force===true;
             await transaction(async()=>{
               const row=await db.prepare('SELECT data FROM orders WHERE id=?').get(id);if(!row)fail(404,'Pedido não encontrado.');const o=JSON.parse(row.data);
-              if(OPEN_ORDER.includes(o.status))fail(409,'Este pedido ainda está em andamento. Cancele ou conclua antes de excluir.');
-              if(o.payment?.provider&&o.status!=='demo_expired'&&o.status!=='demo_cancelled')fail(409,'Pedidos com pagamento registrado não podem ser excluídos.');
+              if(OPEN_ORDER.includes(o.status)){if(!force)fail(409,'Este pedido ainda está em andamento. Confirme para cancelar (as peças voltam ao estoque) e excluir.');await changeOrder(o,'demo_cancelled');}
               await db.prepare('DELETE FROM orders WHERE id=?').run(id);await record('deleted','order',id);
             });return send(res,200,{deleted:{id}});
           }
