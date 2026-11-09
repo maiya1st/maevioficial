@@ -35,6 +35,8 @@ function createDatabase({dataDir,mysql}={}){
       CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS coupons(code TEXT PRIMARY KEY,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS images(name TEXT PRIMARY KEY,type TEXT NOT NULL,bytes INTEGER NOT NULL,data BLOB NOT NULL);
+      CREATE TABLE IF NOT EXISTS alerts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS subscribers(email TEXT PRIMARY KEY,data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS orders_expiration ON orders(json_extract(data,'$.status'),json_extract(data,'$.reservationExpiresAt'));`);
     else{
       const ddl=[
@@ -45,7 +47,9 @@ function createDatabase({dataDir,mysql}={}){
         'CREATE TABLE IF NOT EXISTS activity(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,at CHAR(24) NOT NULL,action VARCHAR(80) NOT NULL,entity VARCHAR(32) NOT NULL,entity_id VARCHAR(100) NOT NULL) ENGINE=InnoDB',
         'CREATE TABLE IF NOT EXISTS settings(`key` VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,data LONGTEXT NOT NULL) ENGINE=InnoDB',
         'CREATE TABLE IF NOT EXISTS coupons(code VARCHAR(30) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,data LONGTEXT NOT NULL) ENGINE=InnoDB',
-        'CREATE TABLE IF NOT EXISTS images(name VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,type VARCHAR(32) NOT NULL,bytes INT NOT NULL,data MEDIUMBLOB NOT NULL) ENGINE=InnoDB'
+        'CREATE TABLE IF NOT EXISTS images(name VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,type VARCHAR(32) NOT NULL,bytes INT NOT NULL,data MEDIUMBLOB NOT NULL) ENGINE=InnoDB',
+        'CREATE TABLE IF NOT EXISTS alerts(id VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,data LONGTEXT NOT NULL) ENGINE=InnoDB',
+        'CREATE TABLE IF NOT EXISTS subscribers(email VARCHAR(254) PRIMARY KEY,data LONGTEXT NOT NULL) ENGINE=InnoDB'
       ];for(const sql of ddl)await pool.execute(sql.startsWith('CREATE TABLE')?sql+' DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin':sql);
     }
     await transaction(async()=>{

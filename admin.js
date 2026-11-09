@@ -7,9 +7,9 @@ let payment={};const label=s=>labels[s]||s;
 const paidOrder=o=>Boolean(o.payment?.provider&&o.payment.status==='approved');
 const nextFor=o=>next[o.status]||[];
 function actionLabel(o,s){if(s!=='demo_cancelled')return o.status==='demo_payment_review'&&s==='demo_preparing'?'Conferido: está pago':label(s);if(o.status==='demo_payment_review')return 'Cancelar (conferido no Mercado Pago)';return paidOrder(o)?'Cancelar e estornar':('Cancelar e devolver estoque');}
-const TITLES={catalog:'Peças',orders:'Pedidos',structure:'Categorias e tamanhos',settings:'Loja',coupons:'Cupons',account:'Minha conta'};
+const TITLES={catalog:'Peças',orders:'Pedidos',structure:'Categorias e tamanhos',settings:'Loja',coupons:'Cupons',customers:'Clientes',account:'Minha conta'};
 const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
-let products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer;
+let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer;
 const sum=stock=>Object.values(stock||{}).reduce((a,b)=>a+b,0);
 
 function toast(message){const t=$('#admin-toast');t.textContent=message;t.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('visible'),3800);}
@@ -25,10 +25,10 @@ async function api(url,options={}){
 async function refresh(silent=false){
   $('#refresh').disabled=true;const epoch=authEpoch;
   try{
-    const [list,purchases,events,structure,me,settings]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings')]);payment=settings.payment||{};
+    const [list,purchases,events,structure,me,settings,waiting,emails]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers')]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
     if(epoch!==authEpoch)return false;
     products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;account=me.account;sessionMethod=me.session.method;
-    loggedIn(true);render();renderStructure();renderAccount();document.dispatchEvent(new Event('maevi:admin-ready'));
+    loggedIn(true);render();renderStructure();renderAccount();renderCustomers();document.dispatchEvent(new Event('maevi:admin-ready'));
     if(!silent)toast('Dados atualizados.');return true;
   }catch(error){if(!silent&&!$('#dashboard').hidden)$('#dashboard-message').textContent=error.message;return false;}
   finally{$('#refresh').disabled=false;}
@@ -99,19 +99,19 @@ function setPhoto(slot,value){
 }
 function formData(){
   const f=new FormData(form);
-  return {name:f.get('name').trim(),category:f.get('category'),priceCents:Math.round(Number(String(f.get('price')).replace(',','.'))*100),color:f.get('color').trim(),hex:f.get('hex'),description:f.get('description').trim(),image:f.get('image').trim(),secondaryImage:f.get('secondaryImage').trim(),material:f.get('material'),care:f.get('care'),measurements:f.get('measurements'),featured:f.get('featured')==='on',active:f.get('active')==='on',stock:readStock(),version:Number(f.get('version'))||0};
+  return {name:f.get('name').trim(),category:f.get('category'),priceCents:Math.round(Number(String(f.get('price')).replace(',','.'))*100),color:f.get('color').trim(),hex:f.get('hex'),description:f.get('description').trim(),image:f.get('image').trim(),secondaryImage:f.get('secondaryImage').trim(),material:f.get('material'),care:f.get('care'),measurements:f.get('measurements'),featured:f.get('featured')==='on',active:f.get('active')==='on',stock:readStock(),version:Number(f.get('version'))||0,look:[...lookSel],sizeChart:readChart(),colors:[...colorSel].sort()};
 }
 function preview(){
   const d=formData(),total=sum(d.stock);$('#hex-label').textContent=d.hex;$('#stock-total').textContent=`${total} unidade${total===1?'':'s'} no total`;
   $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${d.image?`<img src="${escapeHTML(d.image)}" alt="">`:'<span>Sua foto aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color"><i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(d.hex)?d.hex:'#303521')}"></i>${escapeHTML(d.color||'Cor')}</p><p class="preview-sizes">${catalog.sizes.map(s=>`<span class="${d.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
 }
-function openEditor(p){
+function openEditor(p,preset=null){
   editing=p||null;form.reset();$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
   $('#product-category').innerHTML=catalog.categories.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
-  const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:{id:'',version:'',hex:'#303521',category:catalog.categories[0]||''};
+  const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:preset?{...preset.fields,id:'',version:'',hex:'#303521'}:{id:'',version:'',hex:'#303521',category:catalog.categories[0]||''};
   for(const name of ['id','version','name','category','price','color','hex','description','material','care','measurements']){const input=form.elements.namedItem(name);if(input&&v[name]!==undefined)input.value=v[name];}
   form.elements.active.checked=p?p.active:true;form.elements.featured.checked=Boolean(p?.featured);
-  setPhoto('image',p?.image||'');setPhoto('secondaryImage',p?.secondaryImage||'');stockInputs(p?.stock);
+  setPhoto('image',p?.image||'');setPhoto('secondaryImage',p?.secondaryImage||'');stockInputs(p?.stock);extrasOpen(p,preset);
   form.querySelectorAll('.photo-slot .field-note').forEach((n,i)=>n.textContent=i?'Aparece ao passar o mouse e na galeria':'JPG, PNG ou WebP · até 4 MB · de preferência em pé (3:4)');
   preview();snapshot=JSON.stringify(formData());$('#edit-dialog').showModal();form.elements.name.focus();
 }
@@ -143,9 +143,94 @@ form.addEventListener('submit',async event=>{
   const missing=[!data.image&&'a foto principal',!data.name&&'o nome',!data.category&&'a categoria',!(data.priceCents>0)&&'o preço',!data.color&&'a cor',!data.description&&'a descrição'].filter(Boolean);
   if(missing.length){message.textContent='Falta preencher '+missing.join(', ')+'.';return;}
   $('#save-product').disabled=true;message.textContent='Salvando…';
-  try{await api('/api/admin/products'+(editing?'/'+editing.id:''),{method:editing?'PUT':'POST',body:JSON.stringify(data)});snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);toast(editing?'Peça atualizada. Já está na vitrine.':'Peça cadastrada. Já está na vitrine.');}
+  try{
+    const oldGroup=editing?.colorGroup||presetGroup||'',group=colorSel.size?(oldGroup||products.find(x=>colorSel.has(x.id)&&x.colorGroup)?.colorGroup||newGroup()):'';
+    const {colors,...payload}=data;payload.colorGroup=group;
+    const saved=await api('/api/admin/products'+(editing?'/'+editing.id:''),{method:editing?'PUT':'POST',body:JSON.stringify(payload)});
+    // Atualiza as outras cores ligadas ou desligadas desta peça.
+    for(const x of products){if(x.id===saved.product.id)continue;const target=colorSel.has(x.id)?group:(oldGroup&&x.colorGroup===oldGroup?'':x.colorGroup||'');if((x.colorGroup||'')!==target)await api('/api/admin/products/'+x.id,{method:'PUT',body:JSON.stringify({...x,colorGroup:target,version:x.version||0})});}
+    snapshot=JSON.stringify(formData());presetGroup='';$('#edit-dialog').close();await refresh(true);toast(editing?'Peça atualizada. Já está na vitrine.':'Peça cadastrada. Já está na vitrine.');}
   catch(error){message.textContent=error.message;}finally{$('#save-product').disabled=uploads>0;}
 });
+
+/* ---------- Editor: medidas, cores e look ---------- */
+let lookSel=new Set(),colorSel=new Set(),chart={columns:['Busto','Cintura','Quadril'],rows:{}},presetGroup='';
+const newGroup=()=>'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function renderChart(){
+  $('#chart-editor').innerHTML=`<table><thead><tr><th>Tamanho</th>${chart.columns.map((c,i)=>`<th><span class="chart-col"><input value="${escapeHTML(c)}" maxlength="20" data-col="${i}" aria-label="Nome da medida ${i+1}"><button type="button" data-remove-col="${i}" aria-label="Remover medida">×</button></span></th>`).join('')}</tr></thead><tbody>${catalog.sizes.map(s=>`<tr><th>${escapeHTML(s)}</th>${chart.columns.map((c,i)=>`<td><input value="${escapeHTML(chart.rows[s]?.[i]||'')}" maxlength="12" inputmode="decimal" data-size="${escapeHTML(s)}" data-cell="${i}" aria-label="${escapeHTML(c)} do tamanho ${escapeHTML(s)}"></td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function syncChart(){
+  const cols=[...$('#chart-editor').querySelectorAll('[data-col]')].map(i=>i.value);const rows={};
+  for(const input of $('#chart-editor').querySelectorAll('[data-cell]')){(rows[input.dataset.size]??=Array(cols.length).fill(''))[Number(input.dataset.cell)]=input.value;}
+  chart={columns:cols,rows};
+}
+function readChart(){
+  if(!$('#chart-editor').querySelector('table'))return null;syncChart();
+  const cols=chart.columns.map(c=>c.trim()),keep=cols.map((c,i)=>Boolean(c));if(!keep.some(Boolean))return null;
+  const rows={};for(const [s,values] of Object.entries(chart.rows)){const v=values.filter((_,i)=>keep[i]).map(x=>x.trim());if(v.some(Boolean))rows[s]=v;}
+  return Object.keys(rows).length?{columns:cols.filter(Boolean),rows}:null;
+}
+function pickerItem(x,checked,kind){return `<label class="pick${checked?' is-on':''}"><input type="checkbox" data-pick="${kind}" value="${x.id}"${checked?' checked':''}><img src="${escapeHTML(x.image)}" alt="" loading="lazy"><span><b>${escapeHTML(x.name)}</b><small><i style="background:${escapeHTML(x.hex)}"></i>${escapeHTML(x.color)} · ${money(x.priceCents)}</small></span></label>`;}
+function renderPickers(){
+  const self=editing?.id,others=products.filter(x=>x.id!==self);
+  const q=$('#look-search').value.trim().toLocaleLowerCase('pt-BR');
+  $('#color-picker').innerHTML=others.length?others.filter(x=>colorSel.has(x.id)||!x.colorGroup||x.colorGroup!==editing?.colorGroup).sort((a,b)=>Number(colorSel.has(b.id))-Number(colorSel.has(a.id))).map(x=>pickerItem(x,colorSel.has(x.id),'color')).join(''):'<p class="field-note">Cadastre outras peças para ligar as cores.</p>';
+  $('#look-picker').innerHTML=others.filter(x=>lookSel.has(x.id)||[x.name,x.category,x.color].join(' ').toLocaleLowerCase('pt-BR').includes(q)).sort((a,b)=>Number(lookSel.has(b.id))-Number(lookSel.has(a.id))).slice(0,30).map(x=>pickerItem(x,lookSel.has(x.id),'look')).join('')||'<p class="field-note">Nenhuma peça encontrada.</p>';
+  $('#new-color').hidden=!editing;
+}
+function extrasOpen(p,preset){
+  lookSel=new Set((preset?.fields.look??p?.look)||[]);
+  const group=preset?.group||p?.colorGroup||'';presetGroup=preset?.group||'';
+  colorSel=new Set(group?products.filter(x=>x.colorGroup===group&&x.id!==p?.id).map(x=>x.id):[]);
+  const source=preset?.fields.sizeChart??p?.sizeChart;
+  chart=source?{columns:[...source.columns],rows:Object.fromEntries(Object.entries(source.rows).map(([k,v])=>[k,[...v]]))}:{columns:['Busto','Cintura','Quadril'],rows:{}};
+  $('#chart-copy').innerHTML='<option value="">Copiar tabela de outra peça…</option>'+products.filter(x=>x.sizeChart&&x.id!==p?.id).map(x=>`<option value="${x.id}">${escapeHTML(x.name)} · ${escapeHTML(x.color)}</option>`).join('');
+  $('#look-search').value='';renderChart();renderPickers();
+}
+$('#chart-editor').addEventListener('click',e=>{const b=e.target.closest('[data-remove-col]');if(!b)return;syncChart();const i=Number(b.dataset.removeCol);chart.columns.splice(i,1);for(const v of Object.values(chart.rows))v.splice(i,1);if(!chart.columns.length)chart.columns=['Medida'];renderChart();});
+$('#chart-add-col').addEventListener('click',()=>{syncChart();if(chart.columns.length>=6){toast('Use até 6 medidas.');return;}chart.columns.push('');for(const v of Object.values(chart.rows))v.push('');renderChart();$('#chart-editor').querySelector(`[data-col="${chart.columns.length-1}"]`).focus();});
+$('#chart-clear').addEventListener('click',()=>{chart={columns:['Busto','Cintura','Quadril'],rows:{}};renderChart();});
+$('#chart-copy').addEventListener('change',e=>{const x=products.find(p=>p.id===Number(e.target.value));if(x?.sizeChart){chart={columns:[...x.sizeChart.columns],rows:Object.fromEntries(Object.entries(x.sizeChart.rows).map(([k,v])=>[k,[...v]]))};renderChart();toast('Tabela copiada de '+x.name+'.');}e.target.value='';});
+$('#look-search').addEventListener('input',renderPickers);
+form.addEventListener('change',e=>{const t=e.target;if(!t.dataset?.pick)return;const set=t.dataset.pick==='look'?lookSel:colorSel,id=Number(t.value);
+  if(t.checked){if(set===lookSel&&lookSel.size>=6){t.checked=false;toast('O look aceita até 6 peças.');return;}set.add(id);}else set.delete(id);
+  t.closest('.pick').classList.toggle('is-on',t.checked);});
+$('#new-color').addEventListener('click',async()=>{
+  if(!editing)return;if(JSON.stringify(formData())!==snapshot){toast('Salve esta peça antes de criar outra cor.');return;}
+  let group=editing.colorGroup;
+  try{if(!group){group=newGroup();await api('/api/admin/products/'+editing.id,{method:'PUT',body:JSON.stringify({...editing,colorGroup:group,version:editing.version||0})});await refresh(true);}
+  const base=products.find(x=>x.id===editing.id)||editing;
+  openEditor(null,{group,fields:{name:base.name,category:base.category,price:(base.priceCents/100).toFixed(2),description:base.description,material:base.material||'',care:base.care||'',measurements:base.measurements||'',look:base.look||[],sizeChart:base.sizeChart||null}});
+  $('#edit-title').textContent='Nova cor · '+base.name;form.elements.color.value='';form.elements.color.focus();toast('Escolha a cor, as fotos e o estoque desta nova cor.');}
+  catch(error){toast(error.message);}
+});
+
+/* ---------- Clientes: avise-me e lista de e-mails ---------- */
+const back=a=>{const p=products.find(x=>x.id===a.productId);return Boolean(p&&p.active&&p.stock[a.size]>0);};
+function alertLink(a){
+  const p=products.find(x=>x.id===a.productId),url=location.origin+'/?produto='+a.productId;
+  const text=`Olá! Aqui é da MAÉVI. A peça ${a.productName} (${a.color}, tamanho ${a.size}) que você pediu para avisar ${back(a)?'voltou ao estoque':'ainda está esgotada, mas lembramos de você'}: ${url}`;
+  return a.type==='whatsapp'?`https://wa.me/55${a.contact}?text=${encodeURIComponent(text)}`:`mailto:${a.contact}?subject=${encodeURIComponent((back(a)?'Voltou: ':'')+a.productName+' · MAÉVI')}&body=${encodeURIComponent(text)}`;
+}
+function renderCustomers(){
+  const pendingBack=alerts.filter(a=>a.status==='pending'&&back(a));
+  $('#restock-banner').hidden=!pendingBack.length;$('#restock-title').textContent=pendingBack.length===1?'1 cliente esperando uma peça que voltou.':`${pendingBack.length} clientes esperando peças que voltaram.`;
+  const only=$('#alerts-pending-only').checked,list=alerts.filter(a=>!only||a.status==='pending').sort((a,b)=>Number(back(b))-Number(back(a)));
+  $('#alert-list').innerHTML=list.length?list.map(a=>{const p=products.find(x=>x.id===a.productId);return `<div class="crow${a.status==='notified'?' is-off':''}">${p?`<img src="${escapeHTML(p.image)}" alt="">`:'<span class="mbadge">—</span>'}<div class="minfo"><strong>${escapeHTML(a.productName)}</strong><small>${escapeHTML(a.color)} · tamanho ${escapeHTML(a.size)} · ${escapeHTML(a.type==='whatsapp'?a.contact.replace(/^(\d{2})(\d{4,5})(\d{4})$/,'($1) $2-$3'):a.contact)} · ${new Date(a.createdAt).toLocaleDateString('pt-BR')}</small></div>${a.status==='notified'?'<span class="badge muted">Avisada</span>':back(a)?'<span class="badge ok">Voltou ao estoque</span>':'<span class="badge warn">Esgotado</span>'}<div class="mactions"><a class="mlink" href="${escapeHTML(alertLink(a))}" target="_blank" rel="noopener">${a.type==='whatsapp'?'Avisar no WhatsApp':'Enviar e-mail'}</a>${a.status==='pending'?`<button type="button" data-alert="${a.id}" data-alert-act="notified">Marcar avisada</button>`:`<button type="button" data-alert="${a.id}" data-alert-act="pending">Reabrir</button>`}<button type="button" class="danger-link" data-alert="${a.id}" data-alert-act="delete">Excluir</button></div></div>`;}).join(''):'<p class="empty-state">Nenhum pedido de aviso por aqui.</p>';
+  $('#subscriber-list').innerHTML=subscribers.length?subscribers.map(x=>`<div class="crow"><span class="mbadge">@</span><div class="minfo"><strong>${escapeHTML(x.email)}</strong><small>Cadastro em ${new Date(x.createdAt).toLocaleDateString('pt-BR')}</small></div><div class="mactions"><button type="button" class="danger-link" data-unsubscribe="${escapeHTML(x.email)}">Remover</button></div></div>`).join(''):'<p class="empty-state">Ainda não há e-mails cadastrados. Ligue o pop-up de boas-vindas em Loja.</p>';
+}
+$('#alerts-pending-only').addEventListener('change',renderCustomers);
+$('#customers-panel').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-alert]');
+  if(b){const act=b.dataset.alertAct;if(act==='delete'&&!await confirmBox('Excluir este aviso?','A cliente sai da lista de espera desta peça.'))return;b.disabled=true;
+    try{await api('/api/admin/alerts/'+b.dataset.alert,{method:act==='delete'?'DELETE':'PATCH',body:JSON.stringify(act==='delete'?{}:{status:act})});alerts=(await api('/api/admin/alerts')).alerts;renderCustomers();}catch(error){toast(error.message);b.disabled=false;}return;}
+  const u=e.target.closest('[data-unsubscribe]');
+  if(u){if(!await confirmBox('Remover este e-mail?',`${u.dataset.unsubscribe} sai da lista de novidades.`,'Remover'))return;
+    try{await api('/api/admin/subscribers',{method:'DELETE',body:JSON.stringify({email:u.dataset.unsubscribe})});subscribers=(await api('/api/admin/subscribers')).subscribers;renderCustomers();toast('E-mail removido.');}catch(error){toast(error.message);}}
+  const link=e.target.closest('.mlink');if(link){const id=link.closest('.crow')?.querySelector('[data-alert-act="notified"]')?.dataset.alert;if(id)setTimeout(()=>toast('Depois de enviar, toque em "Marcar avisada".'),400);}
+});
+$('#copy-emails').addEventListener('click',async()=>{if(!subscribers.length){toast('A lista está vazia.');return;}try{await navigator.clipboard.writeText(subscribers.map(x=>x.email).join(', '));toast(`${subscribers.length} e-mail${subscribers.length===1?' copiado':'s copiados'}.`);}catch{toast('Não foi possível copiar.');}});
+$('#export-emails').addEventListener('click',()=>{if(!subscribers.length){toast('A lista está vazia.');return;}const csv='email,cadastro\n'+subscribers.map(x=>`${x.email},${x.createdAt.slice(0,10)}`).join('\n');const url=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='maevi-emails.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 
 /* ---------- Categorias e tamanhos ---------- */
 function row(kind,value,original){
@@ -251,7 +336,7 @@ function renderManager(){
 async function loadCoupons(){try{manager.coupons=(await api('/api/admin/coupons')).coupons;}catch{manager.coupons=[];}}
 async function openManager(tab='products'){manager.tab=tab;manager.selected.clear();$('#manager-search').value='';$('#manager-filter').innerHTML='';await loadCoupons();$('#manager-dialog').showModal();renderManager();}
 const find=key=>manager.tab==='products'?products.find(p=>String(p.id)===key):manager.tab==='orders'?orders.find(o=>o.id===key):manager.coupons.find(c=>c.code===key);
-const couponInput=(c,changes)=>({code:c.code,percent:c.percent,minCents:c.minCents,maxUses:c.maxUses,active:c.active,expiresAt:c.expiresAt||'',version:c.version,...changes});
+const couponInput=(c,changes)=>({code:c.code,percent:c.percent,minCents:c.minCents,maxUses:c.maxUses,active:c.active,firstPurchase:Boolean(c.firstPurchase),expiresAt:c.expiresAt||'',version:c.version,...changes});
 async function act(action,item){
   if(manager.tab==='products'){
     if(action==='delete')return api('/api/admin/products/'+item.id,{method:'DELETE',body:JSON.stringify({force:true})});

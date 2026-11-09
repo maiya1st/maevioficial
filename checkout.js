@@ -38,7 +38,7 @@
   async function updateQuote(){
     const id=++requestId;quote=null;el('place-order').disabled=true;el('coupon-message').textContent='Conferindo os valores…';
     try{
-      const value=await api('/api/quote',{method:'POST',body:JSON.stringify({items,coupon:field('coupon').value.trim().toUpperCase(),shipping:shippingSelection()})});
+      const value=await api('/api/quote',{method:'POST',body:JSON.stringify({items,coupon:field('coupon').value.trim().toUpperCase(),shipping:shippingSelection(),customer:{email:field('email').value.trim()}})});
       if(id!==requestId)return false;quote=value;el('checkout-lines').innerHTML=summary(value);el('checkout-mobile-summary').innerHTML=summary(value);el('coupon-message').textContent=value.coupon?'Cupom aplicado. O desconto aparece no resumo.':'';el('place-order').disabled=false;return true;
     }catch(error){if(id===requestId){el('coupon-message').textContent=error.message;el('order-message').textContent='Não foi possível confirmar os valores. Corrija as informações ou volte à sacola.';}return false;}
   }
@@ -57,7 +57,7 @@
   form.addEventListener('input',event=>{event.target.setCustomValidity?.('');if(event.target.name==='coupon'){invalidate();el('coupon-message').textContent='Clique em Aplicar para conferir o cupom.';}});
   el('checkout').addEventListener('click',async()=>{
     el('checkout').disabled=true;el('checkout-message').textContent='Preparando seu checkout…';
-    try{const config=await api('/api/store');store=config.store;paymentOptions=config.payment;document.querySelector('.payment-notice strong').textContent=paymentOptions.configured?'Pagamento seguro pelo Mercado Pago':'Pagamentos indisponíveis no momento';document.querySelector('.payment-notice p').textContent=paymentOptions.message;items=storeApp.getCart();if(!items.length)throw Error('Sua sacola está vazia.');renderMethods();initialSummary();el('cart-dialog').close();el('checkout-dialog').showModal();showStep(0);el('checkout-message').textContent='';}
+    try{const config=await api('/api/store');store=config.store;paymentOptions=config.payment;document.querySelector('.payment-notice strong').textContent=paymentOptions.configured?'Pagamento seguro pelo Mercado Pago':'Pagamentos indisponíveis no momento';document.querySelector('.payment-notice p').textContent=paymentOptions.message;items=storeApp.getCart();if(!items.length)throw Error('Sua sacola está vazia.');try{const saved=sessionStorage.getItem('maevi-welcome-coupon');if(saved&&!field('coupon').value)field('coupon').value=saved;}catch{}renderMethods();initialSummary();el('cart-dialog').close();el('checkout-dialog').showModal();showStep(0);el('checkout-message').textContent='';}
     catch(error){el('checkout-message').textContent=error.message;}finally{el('checkout').disabled=!storeApp.getCart().length;}
   });
   el('checkout-next').addEventListener('click',async()=>{
