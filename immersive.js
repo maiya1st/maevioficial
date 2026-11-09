@@ -96,7 +96,7 @@ gl_FragColor=vec4(col,1.);}`;
   /* ---------- 4. Inclinação 3D + brilho holográfico ---------- */
   function tilt() {
     if (!fine.matches || reduce.matches) return;
-    const SELECTOR = '.product-photo,.edit-card,.hero-portal,.contact-card';
+    const SELECTOR = '.product-photo,.edit-card,.hero-trio,.contact-card';
     let current = null;
     const reset = el => { el.classList.remove('is-tilting'); el.style.removeProperty('--rx'); el.style.removeProperty('--ry'); };
     document.addEventListener('pointermove', e => {
@@ -104,7 +104,7 @@ gl_FragColor=vec4(col,1.);}`;
       if (current && current !== el) reset(current);
       current = el; if (!el) return;
       const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      const max = el.classList.contains('hero-portal') ? 10 : 8;
+      const max = el.classList.contains('hero-trio') ? 12 : 8;
       el.classList.add('is-tilting');
       el.style.setProperty('--rx', ((.5 - y) * max).toFixed(2) + 'deg'); el.style.setProperty('--ry', ((x - .5) * max).toFixed(2) + 'deg');
       el.style.setProperty('--mx', (x * 100).toFixed(1) + '%'); el.style.setProperty('--my', (y * 100).toFixed(1) + '%');
@@ -122,7 +122,7 @@ gl_FragColor=vec4(col,1.);}`;
       if (e.pointerType !== 'mouse') return;
       x = e.clientX; y = e.clientY; ring.classList.add('is-active'); if (!raf) raf = requestAnimationFrame(tick);
       const t = e.target instanceof Element ? e.target : null;
-      const label = t?.closest('.orbit-viewport') ? 'Girar' : t?.closest('.product-photo,.edit-card') ? 'Ver' : '';
+      const label = t?.closest('.orbit-viewport') ? 'Girar' : t?.closest('.product-photo,.edit-card,.trio-card[data-pos=center][data-product]') ? 'Ver' : '';
       ring.dataset.label = label; ring.classList.toggle('is-hover', Boolean(label || t?.closest('a,button,summary,select,label')));
       const m = t?.closest('main .button,.orbit-arrow');
       if (magnet && magnet !== m) { magnet.style.translate = ''; magnet = null; }
@@ -211,5 +211,34 @@ gl_FragColor=vec4(col,1.);}`;
     if (store()?.getProducts().length) init();
   }
 
-  silk(); heroScroll(); marquee(); tilt(); cursor(); orbit();
+  /* ---------- 7. Trio 3D da abertura: uma peça na frente e duas atrás ---------- */
+  function heroTrio() {
+    const trio = $('#hero-trio'); if (!trio) return;
+    const cards = [...trio.querySelectorAll('.trio-card')];
+    let pool = [], next = 0, timer = 0, visible = true;
+    const order = ['left', 'center', 'right'];
+    function fill() {
+      const list = (window.MaeviStore?.getProducts() || []).filter(p => p.image && p.active !== false);
+      const seen = new Set(); pool = [];
+      for (const p of [...list].sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)))) { const key = p.colorGroup || 'p' + p.id; if (seen.has(key)) continue; seen.add(key); pool.push(p); }
+      if (pool.length < 3) return;
+      const byPos = Object.fromEntries(cards.map(c => [c.dataset.pos, c]));
+      [['center', pool[0]], ['left', pool[1]], ['right', pool[2]]].forEach(([pos, p]) => setCard(byPos[pos], p));
+      next = 3 % pool.length; schedule();
+    }
+    function setCard(card, p) { const img = card.querySelector('img'); img.src = p.image; img.alt = p.name; card.dataset.product = p.id; }
+    function rotate() {
+      // A da direita vem para a frente, a da frente vai para trás à esquerda, a da esquerda passa para trás à direita.
+      for (const card of cards) { const i = order.indexOf(card.dataset.pos); card.dataset.pos = order[(i + 2) % 3]; }
+      if (pool.length > 3) { const back = cards.find(c => c.dataset.pos === 'right'); setTimeout(() => { setCard(back, pool[next]); next = (next + 1) % pool.length; }, 700); }
+    }
+    function schedule() { clearInterval(timer); timer = 0; if (pool.length >= 3 && !reduce.matches && visible && !document.hidden) timer = setInterval(rotate, 5200); }
+    trio.addEventListener('click', e => { const card = e.target.closest('.trio-card'); if (!card?.dataset.product) return; if (card.dataset.pos === 'center') window.MaeviStore?.openProduct(Number(card.dataset.product)); else { while (card.dataset.pos !== 'center') rotate(); schedule(); } });
+    new IntersectionObserver(([e]) => { visible = e.isIntersecting; schedule(); }).observe(trio);
+    document.addEventListener('visibilitychange', schedule);
+    document.addEventListener('maevi:products', fill);
+    if (window.MaeviStore?.getProducts().length) fill();
+  }
+
+  silk(); heroScroll(); heroTrio(); marquee(); tilt(); cursor(); orbit();
 })();
