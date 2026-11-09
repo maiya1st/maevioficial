@@ -5,11 +5,11 @@
   function renderReady(){
     const card=el('ready-card');if(!card||!config)return;
     const s=config,checks=[
-      [Boolean(payment?.live),'Pagamento real ligado',payment?.live?'Mercado Pago em modo real: Pix e cartão em até '+(payment.installments||6)+'x.':payment?.configured?'Mercado Pago ainda em modo de teste. Troque MAEVI_MP_MODE para production na Hostinger.':'Configure as credenciais do Mercado Pago na Hostinger.'],
+      [Boolean(payment?.live),'Pagamento real ligado',payment?.live?'Mercado Pago em modo real: Pix e cartão em até '+(payment.installments||6)+'x.':'Configure as credenciais de produção do Mercado Pago na Hostinger (veja MERCADO-PAGO.md).'],
       [Boolean(s.legalName&&s.documentId&&s.legalAddress),'Identificação da loja','Nome, CPF/CNPJ e endereço aparecem no rodapé.'],
       [Boolean((s.policy||'').trim().length>80),'Política de trocas','Texto exibido no rodapé e no checkout.'],
       [Boolean(s.email||s.whatsapp),'Contato','E-mail ou WhatsApp para atender as clientes.'],
-      [!(s.pickupEnabled&&!s.pickupAddress)&&!(s.deliveryEnabled&&/demonstra|teste/i.test(s.deliveryLabel||'')),'Formas de recebimento','Endereço de retirada preenchido e nome da entrega sem "demonstrativa".']
+      [!(s.pickupEnabled&&!s.pickupAddress)&&!(s.deliveryEnabled&&!(s.deliveryLabel||'').trim()),'Formas de recebimento','Endereço de retirada e nome da entrega preenchidos.']
     ];
     const done=checks.filter(c=>c[0]).length;
     card.innerHTML=`<h3>Pronto para vender? <span>${done}/${checks.length}</span></h3><ul>${checks.map(([ok,title,note])=>`<li class="${ok?'ok':''}"><b>${ok?'✓':'○'}</b><div><strong>${esc(title)}</strong><p>${esc(note)}</p></div></li>`).join('')}</ul>`;

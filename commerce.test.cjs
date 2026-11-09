@@ -4,7 +4,7 @@ const address={cep:'01001000',street:'Praça de Exemplo',number:'100',complement
 const coupon={code:'BEMVINDA20',percent:20,minCents:0,maxUses:1,active:true,expiresAt:''};
 test('configurações são persistidas com versão, validação e acesso protegido',async t=>{
  const f=fixture(t),cookie=await f.login();const original=(await f.request('/api/store')).data;
- assert.equal(original.mode,'demo');assert.equal(original.payment.configured,false);assert.ok(!JSON.stringify(original).includes('fixture-admin-key'));
+ assert.equal(original.mode,'live');assert.equal(original.payment.configured,true);assert.ok(!JSON.stringify(original).includes('fixture-admin-key'));
  assert.equal((await f.request('/api/admin/settings')).status,401);assert.equal((await f.request('/api/admin/coupons')).status,401);
  const input={...original.store,email:'loja@example.com',whatsapp:'(11) 99999-8888',instagram:'maevi',deliveryCents:2500};
  const saved=await f.request('/api/admin/settings',{method:'PUT',data:input,headers:{cookie}});assert.equal(saved.status,200);assert.equal(saved.data.store.version,2);assert.equal(saved.data.store.whatsapp,'11999998888');
@@ -63,21 +63,23 @@ test('expiração libera estoque e cupom uma vez e a repetição retorna o pedid
  assert.equal((await f.request('/api/products')).data.products[0].stock.M,5);const renewed=await f.login();assert.equal((await f.request('/api/admin/coupons',{headers:{cookie:renewed}})).data.coupons[0].used,0);
  const retry=await f.createOrder({coupon:coupon.code});assert.equal(retry.status,200);assert.equal(retry.data.order.id,result.data.order.id);assert.equal(retry.data.order.status,'demo_expired');
 });
-test('pedido iniciado no painel não expira como reserva pendente',async t=>{
+test('pedido sem pagamento não pode ir para preparação pelo painel',async t=>{
  const f=fixture(t),cookie=await f.login(),result=await f.createOrder();
- const status=await f.request('/api/admin/orders/'+result.data.order.id,{method:'PATCH',headers:{cookie},data:{status:'demo_preparing'}});assert.equal(status.status,200);
- f.advance(31*60000);assert.equal(await f.app.runMaintenance(),0);assert.equal((await f.request('/api/products')).data.products[0].stock.M,4);
- assert.equal((await f.post('/api/orders/'+result.data.order.id+'/cancel',{}, {'x-order-token':result.data.token})).status,409);
+ const status=await f.request('/api/admin/orders/'+result.data.order.id,{method:'PATCH',headers:{cookie},data:{status:'demo_preparing'}});assert.equal(status.status,409);
+ assert.equal((await f.request('/api/products')).data.products[0].stock.M,4);
+ assert.equal((await f.request('/api/admin/orders/'+result.data.order.id,{method:'PATCH',headers:{cookie},data:{status:'demo_cancelled'}})).status,200);
+ assert.equal((await f.request('/api/products')).data.products[0].stock.M,5);
 });
 test('cancelamento exige token; um cliente não cancela pedido alheio',async t=>{
  const f=fixture(t),created=await f.createOrder(),url='/api/orders/'+created.data.order.id+'/cancel';
  assert.equal((await f.post(url,{})).status,404);assert.equal((await f.post(url,{}, {'x-order-token':'forged'})).status,404);
  assert.equal((await f.request('/api/products')).data.products[0].stock.M,4);
 });
-test('gateway desativado nunca cria sessão ou aceita confirmação de pagamento do cliente',async t=>{
- const f=fixture(t),created=await f.createOrder({payment:{status:'paid'}}),id=created.data.order.id,headers={'x-order-token':created.data.token};
- assert.equal(created.data.order.payment.status,'not_requested');assert.equal((await f.post('/api/orders/'+id+'/payment-session',{},headers)).status,503);
- assert.equal((await f.request('/api/orders/'+id,{headers})).data.order.payment.status,'not_requested');
+test('sem Mercado Pago configurado a loja não aceita pedidos',async t=>{
+ const f=fixture(t,{paymentEnv:{}}),created=await f.createOrder();
+ assert.equal(created.status,503);assert.match(created.data.error,/indisponíveis/);
+ assert.equal((await f.request('/api/products')).data.products[0].stock.M,5,'nada é reservado');
+ assert.equal((await f.request('/api/store')).data.payment.configured,false);
 });
 test('consulta de CEP usa host fixo, limita campos e faz cache sem enviar dados pessoais',async t=>{
  const calls=[];const f=fixture(t,{network:async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify({logradouro:'Praça Exemplo',bairro:'Centro',localidade:'São Paulo',uf:'SP',unexpected:'discard'}));}});

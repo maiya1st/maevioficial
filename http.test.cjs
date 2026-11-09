@@ -13,7 +13,7 @@ test('HTTP real em loopback: vitrine, painel e parser',async t=>{
   let app;const server=createLocalServer((req,res)=>app.handler(req,res));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await app?.close();if(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-http-'))fs.rmSync(dir,{recursive:true,force:true});});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-  const port=server.address().port;fs.cpSync(path.join(__dirname,'assets'),path.join(dir,'assets'),{recursive:true});app=createApp({port,dataDir:dir,assetDir:path.join(dir,'assets'),adminKey:'isolated-http-test-key'});
+  const port=server.address().port;fs.cpSync(path.join(__dirname,'assets'),path.join(dir,'assets'),{recursive:true});app=createApp({...require('./testing.cjs').testStore,port,dataDir:dir,assetDir:path.join(dir,'assets'),adminKey:'isolated-http-test-key'});
   function request(route,method='GET',data,headers={}){
     return new Promise((resolve,reject)=>{
       const body=data===undefined?null:Buffer.isBuffer(data)?data:JSON.stringify(data);
