@@ -46,6 +46,15 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     order.history=order.history||[{status:order.status,at:order.createdAt}];order.status=status;order.updatedAt=new Date(now()).toISOString();order.history.push({status,at:order.updatedAt});
     (await db.prepare('UPDATE orders SET data=? WHERE id=?').run(JSON.stringify(order),order.id));(await record(status,'order',order.id));return order;
   }
+  let sweeping=false;
+  async function sweepPayments(){
+    if(sweeping||!payments.options().configured)return 0;sweeping=true;let done=0;
+    try{
+      const rows=(await db.prepare("SELECT data FROM orders WHERE json_extract(data,'$.status')='demo_payment_pending' LIMIT 200").all()).map(r=>JSON.parse(r.data)).filter(o=>Date.parse(o.payment?.expiresAt)+10*60000<=now()).slice(0,5);
+      for(const o of rows){try{await reconcile(o.id);done++;}catch{}}
+    }finally{sweeping=false;}
+    return done;
+  }
   async function runMaintenance(){
     return (await transaction(async()=>{const rows=(await db.prepare("SELECT data FROM orders WHERE json_extract(data,'$.status')='demo_received' AND json_extract(data,'$.reservationExpiresAt')<=? LIMIT 200").all(new Date(now()).toISOString()));for(const row of rows)(await changeOrder(JSON.parse(row.data),'demo_expired'));return rows.length;}));
   }
@@ -94,8 +103,12 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   async function reconcile(id){
     const order=(await readOrder(id));
     if(order.payment?.preferenceId){
-      for(const candidate of await payments.findPayments(order))await applyPayment(await payments.getPayment(candidate.id));
-      (await transaction(async()=>{const current=(await readOrder(id));if(current.status==='demo_payment_pending'&&Date.parse(current.payment.expiresAt)<=now())(await changeOrder(current,'demo_payment_review'));}));
+      const candidates=await payments.findPayments(order);
+      for(const candidate of candidates)await applyPayment(await payments.getPayment(candidate.id));
+      // Checkout vencido: sem pagamento em andamento, a reserva volta ao estoque; pagamento ainda pendente após 24 h vai para conferência.
+      (await transaction(async()=>{const current=(await readOrder(id));if(current.status!=='demo_payment_pending')return;const expires=Date.parse(current.payment.expiresAt);if(!(expires+10*60000<=now()))return;
+        const open=candidates.some(c=>['pending','in_process','authorized','approved'].includes(c.status));
+        if(!open)(await changeOrder(current,'demo_expired'));else if(expires+24*60*60000<=now())(await changeOrder(current,'demo_payment_review'));}));
     }
     return (await readOrder(id));
   }
@@ -343,6 +356,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             const id=route.split('/').pop(),force=(await body(req)).force===true;
             await transaction(async()=>{
               const row=await db.prepare('SELECT data FROM orders WHERE id=?').get(id);if(!row)fail(404,'Pedido não encontrado.');const o=JSON.parse(row.data);
+              if(payments.options().live&&o.payment?.provider&&(OPEN_ORDER.includes(o.status)||o.payment.status==='approved'))fail(409,o.payment.status==='approved'?'Pedido pago: ele fica no histórico. Para desfazer a venda, use Cancelar e estornar.':'Este pedido tem pagamento em andamento no Mercado Pago. Aguarde a confirmação ou cancele com estorno antes de excluir.');
               if(OPEN_ORDER.includes(o.status)){if(!force)fail(409,'Este pedido ainda está em andamento. Confirme para cancelar (as peças voltam ao estoque) e excluir.');await changeOrder(o,'demo_cancelled');}
               await db.prepare('DELETE FROM orders WHERE id=?').run(id);await record('deleted','order',id);
             });return send(res,200,{deleted:{id}});
@@ -364,12 +378,19 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
           }
           if(/^\/api\/admin\/orders\/MV-[A-F0-9]{16}$/.test(route)&&req.method==='PATCH'){
             const {status}=await body(req),id=route.split('/').pop();
+            const allowed=o=>({demo_received:payments.options().live?['demo_cancelled']:['demo_preparing','demo_cancelled'],demo_paid:['demo_preparing','demo_cancelled'],demo_payment_review:['demo_preparing','demo_cancelled'],demo_preparing:['demo_ready','demo_cancelled'],demo_ready:['demo_completed','demo_cancelled'],demo_completed:[],demo_cancelled:[],demo_expired:[]})[o.status]||[];
+            const before=await readOrder(id);if(!before)fail(404,'Pedido não encontrado.');
+            if(!allowed(before).includes(status))fail(409,'Mudança de situação não permitida.');
+            // Pedido pago pelo Mercado Pago: o cancelamento estorna o valor antes de devolver as peças.
+            const refundable=o=>status==='demo_cancelled'&&o.payment?.provider&&o.payment.status==='approved'&&o.payment.paymentId&&o.status!=='demo_payment_review';
+            let refund=null;if(refundable(before))refund=await payments.refund(before.payment.paymentId,before.id);
             const order=(await transaction(async()=>{
-              const row=(await db.prepare('SELECT data FROM orders WHERE id=?').get(id));if(!row)fail(404,'Pedido não encontrado.');const o=JSON.parse(row.data);
-              const next={demo_received:['demo_preparing','demo_cancelled'],demo_paid:['demo_preparing'],demo_preparing:['demo_ready',...(o.payment?.provider?[]:['demo_cancelled'])],demo_ready:['demo_completed',...(o.payment?.provider?[]:['demo_cancelled'])],demo_completed:[],demo_cancelled:[],demo_expired:[]};
-              if(!next[o.status]?.includes(status))fail(409,'Mudança de situação não permitida.');
+              const o=await readOrder(id);if(!o)fail(404,'Pedido não encontrado.');
+              if(!allowed(o).includes(status))fail(409,'Mudança de situação não permitida.');
+              if(refundable(o)&&!refund)fail(409,'O pedido mudou. Atualize os dados e tente novamente.');
+              if(refund)Object.assign(o.payment,{status:'refunded',refundId:refund.refundId,refundedAt:new Date(now()).toISOString()});
               return (await changeOrder(o,status));
-            }));return send(res,200,{order});
+            }));return send(res,200,{order,refunded:Boolean(refund)});
           }
         }
         fail(404,'Rota não encontrada.');
@@ -386,9 +407,12 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
       const file=relative.startsWith('assets/')?path.join(assetDir,relative.slice(7)):path.join(__dirname,relative);if(!fs.existsSync(file)||!fs.statSync(file).isFile())fail(404,'Arquivo não encontrado.');
       const real=fs.realpathSync(file),expected=path.resolve(file);if(process.platform==='win32'?real.toLowerCase()!==expected.toLowerCase():real!==expected)fail(404,'Arquivo não encontrado.');
       const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'};
-      res.writeHead(200,{'Content-Type':types[path.extname(file)],'Cache-Control':relative.endsWith('.html')?'no-store':'no-cache'});res.end(req.method==='HEAD'?'':fs.readFileSync(file));
+      res.writeHead(200,{'Content-Type':types[path.extname(file)],'Cache-Control':relative.endsWith('.html')?'no-store':'no-cache'});let content=fs.readFileSync(file);
+      // Com o pagamento real ligado, a vitrine pode aparecer nas buscas. O painel continua fora delas.
+      if(relative==='index.html'&&payments.options().live)content=Buffer.from(content.toString('utf8').replace('<meta name="robots" content="noindex,nofollow">','<meta name="robots" content="index,follow">'));
+      res.end(req.method==='HEAD'?'':content);
     }catch(error){if(!(error instanceof Problem))console.error('Falha interna na requisição.');if(!res.headersSent){res.setHeader('Cache-Control','no-store');res.setHeader('Connection','close');if(error.status===429)res.setHeader('Retry-After','60');if(error.status===404&&!req.url.startsWith('/api/')&&['GET','HEAD'].includes(req.method)){res.writeHead(404,{'Content-Type':'text/html; charset=utf-8'});res.end(req.method==='HEAD'?'':fs.readFileSync(path.join(__dirname,'404.html')));}else send(res,error.status||500,{error:error instanceof Problem?error.message:'Não foi possível concluir. Tente novamente.'});}else res.end();}
   }
-  return {handler,runMaintenance:async()=>{await ready;return runMaintenance();},ready,close:async()=>{try{await ready;}finally{await db.close();}}};
+  return {handler,runMaintenance:async()=>{await ready;return runMaintenance();},sweepPayments:async()=>{await ready;return sweepPayments();},ready,close:async()=>{try{await ready;}finally{await db.close();}}};
 }
 module.exports={createApp};

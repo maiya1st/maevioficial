@@ -25,7 +25,7 @@ function start({env=process.env,loadEnv=true,appFactory=createApp,serverFactory=
     if(!initialized){res.writeHead(503,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Retry-After':'2','X-Content-Type-Options':'nosniff'});return res.end(req.method==='HEAD'?'':JSON.stringify({error:'A loja está iniciando. Tente novamente em instantes.'}));}
     return app.handler(req,res);
   });
-  const maintenance=setInterval(async()=>{if(!initialized||maintenanceRunning)return;maintenanceRunning=true;try{await app.runMaintenance();}catch{logger.error('Não foi possível liberar reservas expiradas.');}finally{maintenanceRunning=false;}},60000);maintenance.unref();
+  const maintenance=setInterval(async()=>{if(!initialized||maintenanceRunning)return;maintenanceRunning=true;try{await app.runMaintenance();if(app.sweepPayments)await app.sweepPayments();}catch{logger.error('Não foi possível liberar reservas expiradas.');}finally{maintenanceRunning=false;}},60000);maintenance.unref();
   function shutdown(){
     if(closing)return closing;clearInterval(maintenance);process.removeListener('SIGINT',shutdown);process.removeListener('SIGTERM',shutdown);
     server.closeAllConnections();closing=new Promise(resolve=>server.close(async()=>{try{await app.close();}catch{}resolve();}));return closing;

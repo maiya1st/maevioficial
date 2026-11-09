@@ -9,13 +9,20 @@
     if(!manual&&(document.hidden||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,select'))){if(++attempts<20)timer=setTimeout(()=>show(),3000);return;}
     popup.hidden=false;
   }
+  document.addEventListener('click',event=>{if(event.target.closest('#policy-open,[data-open-policy]'))document.getElementById('policy-dialog').showModal();});
   document.getElementById('instagram-dismiss').addEventListener('click',close);
   document.getElementById('instagram-popup-link').addEventListener('click',close);
   document.getElementById('instagram-show').addEventListener('click',()=>show(true));
   popup.addEventListener('keydown',event=>{if(event.key==='Escape'){close();document.getElementById('instagram-show').focus();}});
   async function load(){
     try{
-      const {store}=await window.MaeviStore.api('/api/store');footer.replaceChildren();
+      const {store,payment}=await window.MaeviStore.api('/api/store');footer.replaceChildren();
+      if(payment?.live){document.documentElement.dataset.mode='live';for(const node of document.querySelectorAll('[data-live]'))node.textContent=node.dataset.live;for(const node of document.querySelectorAll('[data-demo-only]'))node.hidden=true;document.dispatchEvent(new CustomEvent('maevi:live'));}
+      const legal=[store.legalName,store.documentId&&(store.documentId.length>14?'CNPJ ':'CPF ')+store.documentId,store.legalAddress].filter(Boolean);
+      const legalNode=document.getElementById('store-legal');legalNode.textContent=legal.join(' · ');legalNode.hidden=!legal.length;
+      const policy=typeof store.policy==='string'?store.policy.trim():'';
+      document.getElementById('policy-text').textContent=policy;
+      for(const button of document.querySelectorAll('#policy-open,[data-open-policy]'))button.hidden=!policy;
       const phone=typeof store.whatsapp==='string'&&/^\d{10,11}$/.test(store.whatsapp)?store.whatsapp:'';
       const handle=typeof store.instagram==='string'&&/^[a-zA-Z0-9._]{1,30}$/.test(store.instagram)?store.instagram:'';
       window.MaeviContacts=Object.freeze({whatsapp:phone});document.dispatchEvent(new CustomEvent('maevi:contacts'));

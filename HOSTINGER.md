@@ -38,9 +38,9 @@ Com `MAEVI_HOSTING=setup`, a aplicação exibe somente uma página de preparaç�
 | MAEVI_DB_NAME | Nome completo do banco criado |
 | MAEVI_DB_USER | Usuário completo do banco |
 | MAEVI_DB_PASSWORD | Senha do banco |
-| MAEVI_MP_MODE | `disabled` até configurar o webhook; depois `test` |
-| MAEVI_MP_ACCESS_TOKEN | Access Token da conta vendedora de teste |
-| MAEVI_MP_WEBHOOK_SECRET | Assinatura secreta do webhook de teste |
+| MAEVI_MP_MODE | `disabled` (sem pagamento), `test` (ensaio) ou `production` (vendas reais). Veja MERCADO-PAGO.md |
+| MAEVI_MP_ACCESS_TOKEN | Access Token da conta (de teste ou de produção, conforme o modo) |
+| MAEVI_MP_WEBHOOK_SECRET | Assinatura secreta do webhook do mesmo modo |
 
 Não configure manualmente PORT sem necessidade; o servidor lê a variável fornecida pela plataforma e usa 3000 como padrão nos modos online. Ele escuta em `0.0.0.0` somente nesses modos. O comando local permanece em `127.0.0.1:5173`. Somente o Host público exato e origens correspondentes são aceitos; não há CORS aberto nem confiança no Host encaminhado arbitrariamente.
 

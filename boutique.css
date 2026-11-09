@@ -302,3 +302,7 @@ footer a:focus-visible,footer button:focus-visible{outline-color:var(--rose)}
 .storefront .detail-copy #add-to-cart[data-needs-size]{background:var(--olive);opacity:.88}
 @media(max-width:600px){.detail-actions{background:var(--paper)}.gallery-track{height:min(54svh,520px)}}
 .nav-categories{display:contents}
+.store-legal{grid-column:1/-1;font-size:12px;color:#e8d0b8b0;margin:8px 0 0;line-height:1.6}
+.policy-text{white-space:pre-line;font-size:15px;line-height:1.7;color:#4b4f3b;max-height:60dvh;overflow:auto}
+.policy-link{display:block;margin:8px 0 0 30px;font-size:13px}
+#policy-open{display:block;font-size:14px;margin:0;padding:10px 0;text-align:left}

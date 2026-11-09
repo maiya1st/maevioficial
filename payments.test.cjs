@@ -8,6 +8,7 @@ function provider(){
     let result;if(u.pathname==='/users/me')result=state.seller;
     else if(u.pathname==='/checkout/preferences'){state.preferences++;const body=JSON.parse(options.body);state.payload=body;state.merchant.external_reference=body.external_reference;result={id:'pref-test',collector_id:123,external_reference:body.external_reference,init_point:'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-test'};}
     else if(u.pathname==='/v1/payments/search')result={results:state.results,paging:{total:state.results.length}};
+    else if(u.pathname.endsWith('/refunds')){state.refunds=(state.refunds||0)+1;state.refundKey=options.headers['X-Idempotency-Key'];result={id:777,payment_id:Number(u.pathname.split('/')[3]),status:'approved'};}
     else if(u.pathname.startsWith('/v1/payments/'))result=state.payments[u.pathname.split('/').pop()];
     else if(u.pathname==='/merchant_orders/99')result=state.merchant;
     else throw Error('Unexpected provider route');
@@ -23,8 +24,8 @@ async function setup(t){
   function webhook(id=42,overrides={}){const ts=String(Date.now()),requestId='fixture-request',v1=crypto.createHmac('sha256',env.MAEVI_MP_WEBHOOK_SECRET).update(`id:${id};request-id:${requestId};ts:${ts};`).digest('hex');return f.post('/api/payments/mercadopago/webhook?data.id='+id,{type:'payment',data:{id}}, {'x-maevi-request':undefined,'x-request-id':requestId,'x-signature':`ts=${ts},v1=${v1}`,...overrides});}
   return {...f,p,order,action,lookup,payment,webhook};
 }
-test('configuração incompleta, produção e localhost nunca ativam cobrança',async()=>{
-  for(const changes of [{MAEVI_MP_MODE:'production'},{MAEVI_PUBLIC_URL:'http://localhost:5173'},{MAEVI_MP_ACCESS_TOKEN:''},{MAEVI_MP_WEBHOOK_SECRET:''},{MAEVI_PUBLIC_URL:'https://example.com/path'}]){
+test('configuração incompleta, modo desconhecido e localhost nunca ativam cobrança',async()=>{
+  for(const changes of [{MAEVI_MP_MODE:'live'},{MAEVI_MP_MODE:''},{MAEVI_PUBLIC_URL:'http://localhost:5173'},{MAEVI_MP_ACCESS_TOKEN:''},{MAEVI_MP_WEBHOOK_SECRET:''},{MAEVI_PUBLIC_URL:'https://example.com/path'}]){
     const g=createGateway({env:{...env,...changes},network:()=>{throw Error('network forbidden');}});assert.equal(g.options().configured,false);await assert.rejects(g.createSession({}),e=>e.status===503);
   }
   for(const value of ['javascript:alert(1)','https://www.mercadopago.com.br.evil.test/checkout/a','https://evil.test/checkout/a','https://user@www.mercadopago.com.br/checkout/a'])assert.throws(()=>checkoutURL(value));
@@ -37,10 +38,18 @@ test('sessão usa total do banco, conta de teste, HTTPS e uma preferência por p
 test('conta vendedora real é bloqueada antes de criar preferência',async t=>{
   const f=await setup(t);f.p.seller.tags=[];assert.equal((await f.action('payment-session')).status,503);assert.equal(f.p.preferences,0);assert.equal((await f.lookup()).status,'demo_payment_review');
 });
-test('reserva de pagamento não expira nem cancela enquanto depende do provedor',async t=>{
-  const f=await setup(t);await f.action('payment-session');f.advance(60*60000);await f.app.runMaintenance();assert.equal((await f.lookup()).status,'demo_payment_pending');assert.equal((await f.action('cancel')).status,409);
-  assert.equal((await f.action('payment-refresh')).data.order.status,'demo_payment_review');
-  const cookie=await f.login();assert.equal((await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_cancelled'},headers:{cookie}})).status,409);
+test('reserva de pagamento não expira localmente; checkout vencido sem pagamento volta ao estoque',async t=>{
+  const f=await setup(t);let cookie=await f.login();const stock=async()=>(await f.request('/api/admin/products',{headers:{cookie}})).data.products.find(p=>p.id===1).stock.M;
+  const reserved=await stock();await f.action('payment-session');f.advance(60*60000);cookie=await f.login();await f.app.runMaintenance();assert.equal((await f.lookup()).status,'demo_payment_pending');assert.equal((await f.action('cancel')).status,409);
+  assert.equal((await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_cancelled'},headers:{cookie}})).status,409,'checkout aberto não é cancelado pelo painel');
+  assert.equal(await f.app.sweepPayments(),1);assert.equal((await f.lookup()).status,'demo_expired');assert.equal(await stock(),reserved+1,'peça devolvida');
+});
+test('pagamento pendente segura a reserva e vai para conferência após 24 horas',async t=>{
+  const f=await setup(t);await f.action('payment-session');f.p.results=[{id:42,status:'pending'}];f.p.payments[42]=f.payment({status:'pending'});
+  f.advance(60*60000);assert.equal((await f.action('payment-refresh')).data.order.status,'demo_payment_pending');
+  f.advance(24*60*60000);await f.app.sweepPayments();assert.equal((await f.lookup()).status,'demo_payment_review');
+  const cookie=await f.login();assert.equal((await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_cancelled'},headers:{cookie}})).status,200,'conferência pode ser encerrada pelo painel');
+  assert.equal(f.p.refunds||0,0,'sem estorno automático em conferência');
 });
 test('webhook falso, antigo e corpo divergente não consultam API nem aprovam pedido',async t=>{
   const f=await setup(t);await f.action('payment-session');const before=f.p.calls.length;
@@ -59,7 +68,9 @@ test('webhook assinado consulta API; duplicata não repete transição e retorno
   assert.equal((await f.webhook()).status,200);order=await f.lookup();assert.equal(order.history.length,count);
   const cookie=await f.login();assert.equal((await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_preparing'},headers:{cookie}})).status,200);
   await f.webhook();assert.equal((await f.lookup()).status,'demo_preparing');
-  assert.equal((await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_cancelled'},headers:{cookie}})).status,409);
+  const cancelled=await f.request('/api/admin/orders/'+f.order.id,{method:'PATCH',data:{status:'demo_cancelled'},headers:{cookie}});
+  assert.equal(cancelled.status,200);assert.equal(cancelled.data.refunded,true);assert.equal(f.p.refunds,1);assert.equal(f.p.refundKey,'maevi-refund-'+f.order.id);
+  assert.equal(cancelled.data.order.status,'demo_cancelled');assert.equal(cancelled.data.order.payment.status,'refunded');
 });
 test('valor, moeda, ambiente, vendedor e preferência divergentes bloqueiam aprovação',async t=>{
   const f=await setup(t);await f.action('payment-session');
@@ -93,4 +104,26 @@ test('host público não abre painel nem arquivos privados; webhook sem assinatu
   assert.equal((await f.request('/api/admin/settings',{headers:{'x-forwarded-for':'1.2.3.4'}})).status,403);
   for(const route of ['/.env.local','/.env.local.example','/payments.cjs'])assert.equal((await f.request(route)).status,404);
   assert.equal((await f.post('/api/payments/mercadopago/webhook?data.id=42',{type:'payment',data:{id:42}},{host:'maevi.example','x-maevi-request':undefined})).status,401);
+});
+
+const live={...env,MAEVI_MP_MODE:'production',MAEVI_MP_ACCESS_TOKEN:env.MAEVI_MP_ACCESS_TOKEN};
+test('modo real: exige conta de produção, aceita Pix e cartão em até 6x e confere live_mode',async t=>{
+  const g=createGateway({env:live,network:()=>{throw Error('sem rede');}});assert.deepEqual([g.options().configured,g.options().live,g.options().mode],[true,true,'production']);
+  const p=provider();p.seller.tags=['normal'];
+  const f=fixture(t,{paymentEnv:live,paymentNetwork:p.network}),r=await f.createOrder();const {order,token}=r.data,headers={'x-order-token':token};
+  assert.equal((await f.post('/api/orders/'+order.id+'/payment-session',{},headers)).status,200);
+  assert.deepEqual(p.payload.payment_methods,{excluded_payment_types:[{id:'ticket'},{id:'atm'}],installments:6});
+  assert.ok(!JSON.stringify(p.payload).includes('teste'));assert.equal(p.payload.metadata.environment,'production');assert.equal(p.payload.date_of_expiration,p.payload.expiration_date_to);
+  const pay=(changes={})=>({id:42,external_reference:order.id,live_mode:true,collector_id:123,currency_id:'BRL',transaction_amount:order.totalCents/100,status:'approved',order:{id:99},date_created:new Date().toISOString(),date_last_updated:new Date().toISOString(),date_approved:new Date().toISOString(),...changes});
+  const hook=()=>{const ts=String(Date.now()),v1=crypto.createHmac('sha256',live.MAEVI_MP_WEBHOOK_SECRET).update(`id:42;request-id:r1;ts:${ts};`).digest('hex');return f.post('/api/payments/mercadopago/webhook?data.id=42',{type:'payment',data:{id:42}},{'x-maevi-request':undefined,'x-request-id':'r1','x-signature':`ts=${ts},v1=${v1}`});};
+  p.payments[42]=pay({live_mode:false});assert.equal((await hook()).status,409,'pagamento de teste não aprova pedido real');
+  p.payments[42]=pay();assert.equal((await hook()).status,200);assert.equal((await f.request('/api/orders/'+order.id,{headers})).data.order.status,'demo_paid');
+  const cookie=await f.login();
+  assert.equal((await f.request('/api/admin/orders/'+order.id,{method:'DELETE',data:{force:true},headers:{cookie}})).status,409,'pedido pago não pode ser apagado');
+  const settings=(await f.request('/api/admin/settings',{headers:{cookie}})).data.payment;assert.equal(settings.live,true);
+  assert.match((await f.request('/')).text,/content="index,follow"/,'vitrine liberada para buscas no modo real');
+});
+test('modo real recusa credencial de conta de teste',async t=>{
+  const p=provider();const f=fixture(t,{paymentEnv:live,paymentNetwork:p.network}),r=await f.createOrder();
+  const result=await f.post('/api/orders/'+r.data.order.id+'/payment-session',{},{'x-order-token':r.data.token});assert.equal(result.status,503);assert.match(result.data.error,/produção/);
 });
