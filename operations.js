@@ -33,6 +33,7 @@
     const date=c?.expiresAt?new Date(c.expiresAt):null;if(date){date.setMinutes(date.getMinutes()-date.getTimezoneOffset());couponForm.elements.expiresAt.value=date.toISOString().slice(0,16);}
     couponForm.elements.code.readOnly=Boolean(c);couponForm.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});couponForm.elements.percent.focus({preventScroll:true});
   }
+  document.addEventListener('maevi:coupons-changed',load);
   el('new-coupon').addEventListener('click',()=>editCoupon(null));el('close-coupon').addEventListener('click',()=>{couponForm.hidden=true;});
   el('coupon-list').addEventListener('click',event=>{const button=event.target.closest('[data-coupon]');if(button)editCoupon(coupons.find(c=>c.code===button.dataset.coupon));});
   couponForm.addEventListener('submit',async event=>{

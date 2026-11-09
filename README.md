@@ -124,3 +124,7 @@ Base neutra (areia/papel) com oliva e rosé nos detalhes; títulos em Cormorant 
 - **Categorias e tamanhos configuráveis** em **Categorias e tamanhos**: criar, renomear (as peças acompanham), reordenar e remover (só sem peças / com estoque zerado). A vitrine monta filtros, menu, cards de categoria e tamanhos da ficha a partir dessa lista.
 - **Cadastro de peça** com fotos por arrastar e soltar, prévia ao vivo do card, estoque com botões + e −, e ação rápida de ocultar/mostrar.
 - Testes novos em `owner.test.cjs`.
+
+## Gerenciamento em pop-up · v0.9.1
+
+Botões **Gerenciar vitrine**, **Gerenciar pedidos** e **Gerenciar cupons** abrem um pop-up com abas, busca, filtros e seleção múltipla: mostrar/ocultar e destacar peças com um toque, editar, excluir em lote, cancelar e excluir pedidos, ativar/desativar e excluir cupons. Toda exclusão pede confirmação. Por segurança, uma peça que está em pedido em andamento não pode ser excluída, e só pedidos cancelados, expirados ou concluídos (sem pagamento registrado) podem ser apagados. Ao excluir uma peça, as fotos enviadas que ninguém mais usa também são apagadas. O editor de peça ganhou o botão **Excluir peça**.

@@ -162,6 +162,15 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     if(p.secondaryImage&&!/^https:\/\/images\.unsplash\.com\/[^\s"<>]+$/.test(p.secondaryImage)&&!/^\/assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(p.secondaryImage))fail(400,'Segunda imagem inválida. Use /assets/ ou images.unsplash.com.');
     p.stock=Object.fromEntries(catalog.sizes.map(s=>[s,p.stock[s]]));return p;
   }
+  const OPEN_ORDER=['demo_received','demo_payment_pending','demo_payment_review','demo_paid','demo_preparing','demo_ready'];
+  async function removeUnusedImages(candidates){
+    const used=new Set((await allProducts()).flatMap(p=>[p.image,p.secondaryImage]));
+    for(const src of new Set(candidates)){
+      const match=/^\/assets\/(upload-[a-f0-9]{24}\.(?:jpg|png|webp))$/.exec(src||'');if(!match||used.has(src))continue;
+      if(databaseImages)await db.prepare('DELETE FROM images WHERE name=?').run(match[1]);
+      else{try{fs.unlinkSync(path.join(assetDir,match[1]));}catch{}}
+    }
+  }
   async function handler(req,res){
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');
     res.setHeader('Cross-Origin-Resource-Policy','same-origin');res.setHeader('Cross-Origin-Opener-Policy','same-origin');
@@ -201,7 +210,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
         res.setHeader('Cache-Control','no-store');
         if(req.headers['sec-fetch-site']&&!['same-origin','none'].includes(req.headers['sec-fetch-site']))fail(403,'Requisição de outra página bloqueada.');
         rate(req,'api',240);
-        if(!['GET','POST','PUT','PATCH'].includes(req.method))fail(405,'Método não permitido.');
+        if(!['GET','POST','PUT','PATCH','DELETE'].includes(req.method))fail(405,'Método não permitido.');
         if(req.method!=='GET'&&req.headers['x-maevi-request']!=='1')fail(403,'Atualize a página da loja antes de continuar.');
         (await runMaintenance());
         if(req.method==='GET'&&route==='/api/health')return send(res,200,{ok:true,mode:'demo'});
@@ -320,6 +329,29 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
           }
           if(/^\/api\/admin\/products\/\d+$/.test(route)&&req.method==='PUT'){
             const id=Number(route.split('/').pop()),input=await body(req);const p=(await transaction(async()=>{const current=(await getProduct(id));if(!current)fail(404,'Peça não encontrada.');if(input.version!==(current.version||0))fail(409,'Esta peça mudou desde a abertura. Feche a edição, atualize os dados e tente novamente.');const value=validateProduct(input,id,(await getCatalog()));value.version=current.version||0;(await saveProduct(value));(await record('updated','product',id));return value;}));return send(res,200,{product:p});
+          }
+          if(/^\/api\/admin\/products\/\d+$/.test(route)&&req.method==='DELETE'){
+            const id=Number(route.split('/').pop());
+            const removed=await transaction(async()=>{
+              const current=await getProduct(id);if(!current)fail(404,'Peça não encontrada.');
+              const open=(await db.prepare(`SELECT data FROM orders WHERE json_extract(data,'$.status') IN (${OPEN_ORDER.map(()=>'?').join(',')})`).all(...OPEN_ORDER)).map(r=>JSON.parse(r.data)).find(o=>o.items.some(i=>i.id===id));
+              if(open)fail(409,`A peça ${current.name} está no pedido ${open.id}, ainda em andamento. Conclua ou cancele o pedido antes de excluir.`);
+              await db.prepare('DELETE FROM products WHERE id=?').run(id);await removeUnusedImages([current.image,current.secondaryImage]);await record('deleted','product',id);return current;
+            });return send(res,200,{deleted:{id:removed.id,name:removed.name}});
+          }
+          if(/^\/api\/admin\/orders\/MV-[A-F0-9]{16}$/.test(route)&&req.method==='DELETE'){
+            const id=route.split('/').pop();
+            await transaction(async()=>{
+              const row=await db.prepare('SELECT data FROM orders WHERE id=?').get(id);if(!row)fail(404,'Pedido não encontrado.');const o=JSON.parse(row.data);
+              if(OPEN_ORDER.includes(o.status))fail(409,'Este pedido ainda está em andamento. Cancele ou conclua antes de excluir.');
+              if(o.payment?.provider&&o.status!=='demo_expired'&&o.status!=='demo_cancelled')fail(409,'Pedidos com pagamento registrado não podem ser excluídos.');
+              await db.prepare('DELETE FROM orders WHERE id=?').run(id);await record('deleted','order',id);
+            });return send(res,200,{deleted:{id}});
+          }
+          if(/^\/api\/admin\/coupons\/[A-Z0-9_-]{3,30}$/.test(route)&&req.method==='DELETE'){
+            const code=route.split('/').pop();
+            await transaction(async()=>{if(!(await getCoupon(code)))fail(404,'Cupom não encontrado.');await db.prepare('DELETE FROM coupons WHERE code=?').run(code);await record('deleted','coupon',code);});
+            return send(res,200,{deleted:{code}});
           }
           if(route==='/api/admin/orders'&&req.method==='GET')return send(res,200,{orders:(await db.prepare('SELECT data FROM orders ORDER BY rowid DESC LIMIT 200').all()).map(r=>JSON.parse(r.data))});
           if(route==='/api/admin/activity'&&req.method==='GET')return send(res,200,{activity:(await db.prepare('SELECT at,action,entity,entity_id FROM activity ORDER BY id DESC LIMIT 100').all())});
