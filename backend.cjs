@@ -2,14 +2,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {createDatabase}=require('./database.cjs');
-const seed = require('./seed.cjs');
 const {Problem,fail}=require('./errors.cjs');
 const commerce=require('./commerce.cjs');
 const {createGateway}=require('./payments.cjs');
 const images=require('./images.cjs');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const same = (a,b) => crypto.timingSafeEqual(Buffer.from(hash(a)),Buffer.from(hash(b)));
-function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(__dirname,'assets'), adminKey, port=5173, now=Date.now, network=fetch, paymentEnv={}, paymentNetwork=network, mysql, publicOrigin='', publicAdmin=false, databaseImages=!!mysql }={}) {
+function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(__dirname,'assets'), adminKey, port=5173, now=Date.now, network=fetch, paymentEnv={}, paymentNetwork=network, seedProducts=[], mysql, publicOrigin='', publicAdmin=false, databaseImages=!!mysql }={}) {
   const payments=createGateway({env:paymentEnv,network:paymentNetwork,now});
   if(publicOrigin){const u=new URL(publicOrigin);if(u.protocol!=='https:'||u.origin!==publicOrigin||u.username||u.password||u.port||!u.hostname.includes('.')||/^(localhost|127\.|\[|\d+\.)/i.test(u.hostname))throw Error('Informe a origem HTTPS pública sem caminho ou barra final.');}
   if(publicAdmin&&(!publicOrigin||typeof adminKey!=='string'||!/^[a-f0-9]{48}$/.test(adminKey)))throw Error('O painel online exige origem HTTPS e chave administrativa de 48 caracteres hexadecimais.');
@@ -22,7 +21,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     if(!/^[a-f0-9]{48}$/.test(adminKey))throw new Error('Chave local inválida. Restaure data/admin-key.txt a partir do seu backup privado.');
   }
   const db=createDatabase({dataDir,mysql});
-  const ready=db.init(seed,commerce.defaults,assetDir);
+  const ready=db.init(seedProducts,commerce.defaults,assetDir);
   const sessions=new Map(), limits=new Map();let rejectedHostLogs=0;
   const allProducts=async ()=>(await db.prepare('SELECT data FROM products ORDER BY id').all()).map(r=>JSON.parse(r.data));
   const getProduct=async id=>{const row=(await db.prepare('SELECT data FROM products WHERE id=?').get(id));return row ? JSON.parse(row.data):null;};
@@ -61,12 +60,12 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   const readOrder=async id=>{if(typeof id!=='string'||!/^MV-[A-F0-9]{16}$/.test(id))return null;const row=(await db.prepare('SELECT data FROM orders WHERE id=?').get(id));return row?JSON.parse(row.data):null;};
   const saveOrder=async o=>(await db.prepare('UPDATE orders SET data=? WHERE id=?').run(JSON.stringify(o),o.id));
   async function startPayment(id){
-    if(!payments.options().configured)fail(503,'Mercado Pago ainda não configurado para testes. Nenhuma cobrança foi criada.');
+    if(!payments.options().configured)fail(503,'Pagamentos indisponíveis no momento. Nenhuma cobrança foi criada.');
     const order=(await transaction(async()=>{
       const o=(await readOrder(id));
       if(o.payment?.checkoutUrl&&o.status==='demo_payment_pending'&&Date.parse(o.payment.expiresAt)>now())return o;
       if(o.status!=='demo_received'||Date.parse(o.reservationExpiresAt)<=now())fail(409,'Este pedido não permite iniciar outro checkout. Atualize a situação.');
-      o.payment={provider:'mercado_pago',mode:'test',status:'creating'};(await changeOrder(o,'demo_payment_pending'));return o;
+      o.payment={provider:'mercado_pago',mode:payments.options().mode,status:'creating'};(await changeOrder(o,'demo_payment_pending'));return o;
     }));
     if(order.payment.checkoutUrl)return {order,session:{url:order.payment.checkoutUrl}};
     try{
@@ -147,7 +146,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
       if(subtotalCents<c.minCents)fail(409,'O valor da sacola não atinge o mínimo deste cupom.');discountCents=Math.floor(subtotalCents*c.percent/100);applied={code:c.code,percent:c.percent};
     }
     const store=(await getSettings()),delivery=commerce.shipping(shippingInput,store,subtotalCents-discountCents);
-    return {items:lines,subtotalCents,discountCents,coupon:applied,shippingCents:delivery.priceCents,totalCents:subtotalCents-discountCents+delivery.priceCents,shipping:delivery,fulfillment:delivery.method==='pickup'?'demo_pickup':'demo_delivery',mode:'demo',settingsVersion:store.version};
+    return {items:lines,subtotalCents,discountCents,coupon:applied,shippingCents:delivery.priceCents,totalCents:subtotalCents-discountCents+delivery.priceCents,shipping:delivery,fulfillment:delivery.method==='pickup'?'demo_pickup':'demo_delivery',mode:'live',settingsVersion:store.version};
   }
   async function body(req){
     if(!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type']||''))fail(415,'Envie JSON UTF-8.');
@@ -226,15 +225,16 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
         if(!['GET','POST','PUT','PATCH','DELETE'].includes(req.method))fail(405,'Método não permitido.');
         if(req.method!=='GET'&&req.headers['x-maevi-request']!=='1')fail(403,'Atualize a página da loja antes de continuar.');
         (await runMaintenance());
-        if(req.method==='GET'&&route==='/api/health')return send(res,200,{ok:true,mode:'demo'});
-        if(req.method==='GET'&&route==='/api/products'){const catalog=await getCatalog();return send(res,200,{products:(await allProducts()).filter(p=>p.active),catalog:{categories:catalog.categories,sizes:catalog.sizes},mode:'demo'});}
-        if(req.method==='GET'&&route==='/api/store')return send(res,200,{store:(await getSettings()),mode:'demo',payment:payments.options()});
+        if(req.method==='GET'&&route==='/api/health')return send(res,200,{ok:true,mode:'live'});
+        if(req.method==='GET'&&route==='/api/products'){const catalog=await getCatalog();return send(res,200,{products:(await allProducts()).filter(p=>p.active),catalog:{categories:catalog.categories,sizes:catalog.sizes},mode:'live'});}
+        if(req.method==='GET'&&route==='/api/store')return send(res,200,{store:(await getSettings()),mode:'live',payment:payments.options()});
         if(req.method==='GET'&&/^\/api\/postal-code\/\d{8}$/.test(route)){rate(req,'postal',20);return send(res,200,{address:await postalLookup(route.split('/').pop())});}
         if(req.method==='POST'&&route==='/api/quote'){rate(req,'quote',120);const input=await body(req);return send(res,200,(await quote(input.items,input)));}
         if(req.method==='POST'&&route==='/api/orders'){
           rate(req,'orders',30);const input=await body(req);
           const idem=req.headers['idempotency-key'];if(typeof idem!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(idem))fail(400,'Chave da tentativa inválida.');
-          if(!['demo_pickup','demo_delivery'].includes(input.fulfillment)||input.demoAccepted!==true)fail(400,'Confirme que este é um pedido de teste.');
+          if(!payments.options().configured)fail(503,'Pagamentos indisponíveis no momento. Fale com a loja pelo WhatsApp.');
+          if(!['demo_pickup','demo_delivery'].includes(input.fulfillment)||input.demoAccepted!==true)fail(400,'Confirme que leu a política de trocas e devoluções.');
           const customer={name:text(input.customer?.name,'Nome',100),email:text(input.customer?.email,'E-mail',254)};
           if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email))fail(400,'Informe um e-mail válido.');
           const shippingInput=input.shipping||{method:input.fulfillment==='demo_delivery'?'delivery':'pickup'};
@@ -356,7 +356,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             const id=route.split('/').pop(),force=(await body(req)).force===true;
             await transaction(async()=>{
               const row=await db.prepare('SELECT data FROM orders WHERE id=?').get(id);if(!row)fail(404,'Pedido não encontrado.');const o=JSON.parse(row.data);
-              if(payments.options().live&&o.payment?.provider&&(OPEN_ORDER.includes(o.status)||o.payment.status==='approved'))fail(409,o.payment.status==='approved'?'Pedido pago: ele fica no histórico. Para desfazer a venda, use Cancelar e estornar.':'Este pedido tem pagamento em andamento no Mercado Pago. Aguarde a confirmação ou cancele com estorno antes de excluir.');
+              if(o.payment?.provider&&(OPEN_ORDER.includes(o.status)||o.payment.status==='approved'))fail(409,o.payment.status==='approved'?'Pedido pago: ele fica no histórico. Para desfazer a venda, use Cancelar e estornar.':'Este pedido tem pagamento em andamento no Mercado Pago. Aguarde a confirmação ou cancele com estorno antes de excluir.');
               if(OPEN_ORDER.includes(o.status)){if(!force)fail(409,'Este pedido ainda está em andamento. Confirme para cancelar (as peças voltam ao estoque) e excluir.');await changeOrder(o,'demo_cancelled');}
               await db.prepare('DELETE FROM orders WHERE id=?').run(id);await record('deleted','order',id);
             });return send(res,200,{deleted:{id}});
@@ -378,7 +378,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
           }
           if(/^\/api\/admin\/orders\/MV-[A-F0-9]{16}$/.test(route)&&req.method==='PATCH'){
             const {status}=await body(req),id=route.split('/').pop();
-            const allowed=o=>({demo_received:payments.options().live?['demo_cancelled']:['demo_preparing','demo_cancelled'],demo_paid:['demo_preparing','demo_cancelled'],demo_payment_review:['demo_preparing','demo_cancelled'],demo_preparing:['demo_ready','demo_cancelled'],demo_ready:['demo_completed','demo_cancelled'],demo_completed:[],demo_cancelled:[],demo_expired:[]})[o.status]||[];
+            const allowed=o=>({demo_received:['demo_cancelled'],demo_paid:['demo_preparing','demo_cancelled'],demo_payment_review:['demo_preparing','demo_cancelled'],demo_preparing:['demo_ready','demo_cancelled'],demo_ready:['demo_completed','demo_cancelled'],demo_completed:[],demo_cancelled:[],demo_expired:[]})[o.status]||[];
             const before=await readOrder(id);if(!before)fail(404,'Pedido não encontrado.');
             if(!allowed(before).includes(status))fail(409,'Mudança de situação não permitida.');
             // Pedido pago pelo Mercado Pago: o cancelamento estorna o valor antes de devolver as peças.
@@ -409,7 +409,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
       const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'};
       res.writeHead(200,{'Content-Type':types[path.extname(file)],'Cache-Control':relative.endsWith('.html')?'no-store':'no-cache'});let content=fs.readFileSync(file);
       // Com o pagamento real ligado, a vitrine pode aparecer nas buscas. O painel continua fora delas.
-      if(relative==='index.html'&&payments.options().live)content=Buffer.from(content.toString('utf8').replace('<meta name="robots" content="noindex,nofollow">','<meta name="robots" content="index,follow">'));
+      if(relative==='index.html'&&payments.options().configured)content=Buffer.from(content.toString('utf8').replace('<meta name="robots" content="noindex,nofollow">','<meta name="robots" content="index,follow">'));
       res.end(req.method==='HEAD'?'':content);
     }catch(error){if(!(error instanceof Problem))console.error('Falha interna na requisição.');if(!res.headersSent){res.setHeader('Cache-Control','no-store');res.setHeader('Connection','close');if(error.status===429)res.setHeader('Retry-After','60');if(error.status===404&&!req.url.startsWith('/api/')&&['GET','HEAD'].includes(req.method)){res.writeHead(404,{'Content-Type':'text/html; charset=utf-8'});res.end(req.method==='HEAD'?'':fs.readFileSync(path.join(__dirname,'404.html')));}else send(res,error.status||500,{error:error instanceof Problem?error.message:'Não foi possível concluir. Tente novamente.'});}else res.end();}
   }

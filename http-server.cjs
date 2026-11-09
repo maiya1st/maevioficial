@@ -32,8 +32,8 @@ function start({env=process.env,loadEnv=true,appFactory=createApp,serverFactory=
   }
   process.once('SIGINT',shutdown);process.once('SIGTERM',shutdown);
   server.on('error',error=>{logger.error(startupFailure(error));shutdown();process.exitCode=1;});
-  server.listen(config.port,config.host,()=>logger.log(config.mode==='local'?`MAÉVI · http://127.0.0.1:${config.port}\nPainel · http://127.0.0.1:${config.port}/admin\nChave do painel: abra data/admin-key.txt no VS Code.\nModo demonstração: pedidos de teste, sem cobrança.`:'MAÉVI · servidor iniciado; preparando a aplicação.'));
-  const ready=Promise.resolve(app.ready).then(()=>{initialized=true;if(config.mode!=='local')logger.log(config.mode==='setup'?'MAÉVI · página de preparação disponível.':'MAÉVI · banco conectado. Loja e pagamentos exclusivamente de teste.');return true;},error=>{logger.error(startupFailure(error));app.close().catch(()=>{});return false;});
+  server.listen(config.port,config.host,()=>logger.log(config.mode==='local'?`MAÉVI · http://127.0.0.1:${config.port}\nPainel · http://127.0.0.1:${config.port}/admin\nChave do painel: abra data/admin-key.txt no VS Code.`:'MAÉVI · servidor iniciado; preparando a aplicação.'));
+  const ready=Promise.resolve(app.ready).then(()=>{initialized=true;if(config.mode!=='local')logger.log(config.mode==='setup'?'MAÉVI · página de preparação disponível.':'MAÉVI · banco conectado. Loja no ar.');return true;},error=>{logger.error(startupFailure(error));app.close().catch(()=>{});return false;});
   return {server,app,ready,close:shutdown};
 }
 module.exports={createLocalServer,start,startupFailure};

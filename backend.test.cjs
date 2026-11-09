@@ -7,7 +7,7 @@ const {Readable}=require('node:stream');
 const {createApp}=require('./backend.cjs');
 test('catálogo, autenticação, pedidos, estoque e persistência',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-test-'));
-  let app=createApp({dataDir:dir,adminKey:'test-only-key'});
+  let app=createApp({...require('./testing.cjs').testStore,dataDir:dir,adminKey:'test-only-key'});
   t.after(async()=>{await app.close();if(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-test-'))fs.rmSync(dir,{recursive:true,force:true});});
   async function request(url,{method='GET',data,headers={},raw}={}){
     const req=Readable.from(raw!==undefined?[raw]:data===undefined?[]:[JSON.stringify(data)]);
@@ -22,7 +22,7 @@ test('catálogo, autenticação, pedidos, estoque e persistência',async t=>{
   let cookie,order,token;
   await t.test('arquivos permitidos e dados privados bloqueados',async()=>{
     for(const url of ['/','/admin','/app.js','/admin.js','/styles.css','/assets/logo-maevi.png'])assert.equal((await request(url)).status,200,url);
-    for(const url of ['/data/admin-key.txt','/data/maevi.sqlite','/backend.cjs','/seed.cjs','/../package.json','/.git/config'])assert.equal((await request(url)).status,404,url);
+    for(const url of ['/data/admin-key.txt','/data/maevi.sqlite','/backend.cjs','/fixtures.cjs','/../package.json','/.git/config'])assert.equal((await request(url)).status,404,url);
     assert.equal((await request('/api/products',{headers:{host:'evil.test:5173'}})).status,403);
     assert.equal((await post('/api/quote',{}, {origin:'https://evil.test'})).status,403);
   });
@@ -90,12 +90,12 @@ test('catálogo, autenticação, pedidos, estoque e persistência',async t=>{
   });
   await t.test('logout invalida sessão e reiniciar mantém produtos e pedidos',async()=>{
     const current=(await request('/api/admin/products',{headers:{cookie}})).data.products;
-    const legacy={...current.find(p=>p.id===1),image:require('./seed.cjs')[0].sourceImage};
+    const legacy={...current.find(p=>p.id===1),image:require('./fixtures.cjs')[0].sourceImage};
     const custom={...current.find(p=>p.id===5),image:'/assets/editorial-4.jpg'};
     assert.equal((await request('/api/admin/products/1',{method:'PUT',data:legacy,headers:{cookie}})).status,200);
     assert.equal((await request('/api/admin/products/5',{method:'PUT',data:custom,headers:{cookie}})).status,200);
     assert.equal((await post('/api/admin/logout',{}, {cookie})).status,200);assert.equal((await request('/api/admin/orders',{headers:{cookie}})).status,401);
-    await app.close();app=createApp({dataDir:dir,adminKey:'test-only-key'});
+    await app.close();app=createApp({...require('./testing.cjs').testStore,dataDir:dir,adminKey:'test-only-key'});
     assert.equal((await catalog()).data.products.find(p=>p.id===2).stock.GG,0);
     const saved=await request('/api/orders/'+order.id,{headers:{'x-order-token':token}});assert.equal(saved.data.order.status,'demo_cancelled');
     const login=await post('/api/admin/login',{key:'test-only-key'});const newCookie=login.headers['set-cookie'].split(';')[0];

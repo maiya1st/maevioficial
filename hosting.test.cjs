@@ -28,7 +28,7 @@ test('fotos no banco sobrevivem à troca da pasta da aplicação e não aparecem
   const f=fixture(t,{databaseImages:true}),cookie=await f.login(),bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=','base64');
   const saved=await f.request('/api/admin/images',{method:'POST',raw:bytes,headers:{cookie,'content-type':'image/png'}});assert.equal(saved.status,201);assert.equal(fs.readdirSync(path.join(f.root,'assets')).length,0);
   const first=await f.request(saved.data.image);assert.equal(first.status,200);assert.deepEqual(first.bytes,bytes);
-  const nextAssets=path.join(f.root,'another-release-assets');fs.mkdirSync(nextAssets);const second=createApp({dataDir:path.join(f.root,'data'),assetDir:nextAssets,adminKey:'fixture-key',databaseImages:true});await second.ready;
+  const nextAssets=path.join(f.root,'another-release-assets');fs.mkdirSync(nextAssets);const second=createApp({...require('./testing.cjs').testStore,dataDir:path.join(f.root,'data'),assetDir:nextAssets,adminKey:'fixture-key',databaseImages:true});await second.ready;
   t.after(()=>second.close());let result;await second.handler({url:saved.data.image,method:'GET',headers:{host:'127.0.0.1:5173'},socket:{remoteAddress:'fixture'}},{headersSent:false,setHeader(){},writeHead(status,headers){result={status,headers};},end(data){result.bytes=Buffer.from(data||'');}});assert.equal(result.status,200);assert.deepEqual(result.bytes,bytes);
   // Close before fixture cleanup on Windows; close() is idempotent.
   await second.close();

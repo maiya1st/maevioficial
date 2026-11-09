@@ -9,7 +9,7 @@ Nunca envie Access Token, senhas ou a assinatura secreta pelo chat, em prints ou
 1. Entre em https://www.mercadopago.com.br/developers/panel/app com a conta da loja.
 2. Crie a aplicação **MAÉVI** (ou abra a que já existe), do tipo **Pagamentos online · Checkout Pro**.
 3. Abra **Credenciais de produção** e conclua o que o painel pedir para ativá-las: ramo de atividade, site (`https://SEU-DOMINIO`) e dados do negócio.
-4. Copie o **Access Token de produção**, que começa com `APP_USR-`. Não use as credenciais de teste.
+4. Copie o **Access Token de produção**, que começa com `APP_USR-`.
 5. Em **Webhooks → Configurar notificações**, escolha o **modo produtivo**, marque o evento **Pagamentos** e informe a URL:
 
    ```text
@@ -27,9 +27,7 @@ Nunca envie Access Token, senhas ou a assinatura secreta pelo chat, em prints ou
 | `MAEVI_MP_WEBHOOK_SECRET` | Assinatura secreta do webhook **de produção** |
 | `MAEVI_PUBLIC_URL` | Endereço oficial da loja, com `https://` e sem barra no final |
 
-Salve e clique em **Reimplantar**. O servidor confere a conta: se o token for de uma conta de teste, o pagamento fica bloqueado e aparece um aviso.
-
-Para voltar ao ensaio sem cobrança, use `MAEVI_MP_MODE=test` com as credenciais de teste. Para desligar os pagamentos, use `disabled`.
+Salve e clique em **Reimplantar**. O servidor confere a conta e recusa credenciais que não sejam de produção. Para desligar os pagamentos, use `MAEVI_MP_MODE=disabled`: a loja continua no ar, mas não aceita pedidos.
 
 ## 3. No painel da loja (`/admin` → Loja)
 
@@ -37,9 +35,9 @@ O quadro **Pronto para vender?** mostra o que falta:
 
 - **Identificação da loja:** nome ou razão social, CPF ou CNPJ e endereço. É exigida pelo Decreto 7.962/2013 e aparece no rodapé.
 - **Política de trocas e devoluções:** use **Começar com um modelo básico** e complete os trechos entre colchetes. O direito de arrependimento de 7 dias (art. 49 do CDC) vale para toda compra online.
-- **Contato**, **endereço de retirada** e **nome e valor da entrega**, trocando "Entrega demonstrativa" pelo nome real.
+- **Contato**, **endereço de retirada** e **nome e valor da entrega**.
 
-## 4. Primeiro teste com dinheiro real
+## 4. Conferência da primeira venda
 
 1. Cadastre uma peça barata (por exemplo, R$ 5,00) e deixe-a visível.
 2. Peça para outra pessoa comprar pelo celular dela, com o Mercado Pago dela. Ninguém consegue pagar para a própria conta.
@@ -48,7 +46,7 @@ O quadro **Pronto para vender?** mostra o que falta:
    - o pedido aparece como **Pago** no painel;
    - o valor aparece na sua conta Mercado Pago.
 4. No painel, abra o pedido e clique em **Cancelar e estornar**. O valor volta para quem pagou e a peça volta ao estoque.
-5. Exclua ou oculte a peça de teste.
+5. Exclua ou oculte a peça usada na conferência.
 
 ## Como funciona depois de ligado
 

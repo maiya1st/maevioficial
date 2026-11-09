@@ -1,6 +1,6 @@
 const {fail,Problem}=require('./errors.cjs');
 const states=new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
-const defaults=Object.freeze({version:1,name:'MAÉVI',email:'',whatsapp:'41985213878',instagram:'maevioficial',pickupAddress:'',pickupEnabled:true,deliveryEnabled:true,deliveryLabel:'Entrega demonstrativa',deliveryCents:1990,deliveryMinDays:3,deliveryMaxDays:8,freeShippingFromCents:0,reservationMinutes:30});
+const defaults=Object.freeze({version:1,name:'MAÉVI',email:'',whatsapp:'41985213878',instagram:'maevioficial',pickupAddress:'',pickupEnabled:true,deliveryEnabled:true,deliveryLabel:'Entrega',deliveryCents:1990,deliveryMinDays:3,deliveryMaxDays:8,freeShippingFromCents:0,reservationMinutes:30});
 function text(value,label,max=200,optional=false){
   if(optional&&(value===undefined||value===''))return '';
   if(typeof value!=='string'||!value.trim()||value.length>max||/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value))fail(400,`${label} inválido.`);
@@ -32,7 +32,7 @@ function address(input){
 function shipping(input,store,subtotalCents){
   if(input!==undefined&&(!input||typeof input!=='object'||Array.isArray(input)))fail(400,'Forma de recebimento inválida.');
   const method=input?.method||'pickup';
-  if(method==='pickup'){if(!store.pickupEnabled)fail(409,'Retirada indisponível no momento.');return {method,label:'Retirada na loja',priceCents:0,addressLabel:store.pickupAddress||'Endereço será definido antes da abertura.'};}
+  if(method==='pickup'){if(!store.pickupEnabled)fail(409,'Retirada indisponível no momento.');return {method,label:'Retirada na loja',priceCents:0,addressLabel:store.pickupAddress||'Combine a retirada pelo WhatsApp da loja.'};}
   if(method!=='delivery'||!store.deliveryEnabled)fail(409,'Entrega indisponível no momento.');
   const code=cep(input.cep),free=store.freeShippingFromCents>0&&subtotalCents>=store.freeShippingFromCents;
   return {method,label:store.deliveryLabel,cep:code,priceCents:free?0:store.deliveryCents,minDays:store.deliveryMinDays,maxDays:store.deliveryMaxDays,estimateOnly:true};

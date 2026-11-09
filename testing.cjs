@@ -1,8 +1,10 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {Readable}=require('node:stream');const {createApp}=require('./backend.cjs');
+// Loja simulada para os testes automáticos: peças de exemplo e Mercado Pago configurado sem acesso à rede.
+const testStore={seedProducts:require('./fixtures.cjs'),paymentEnv:{MAEVI_MP_MODE:'production',MAEVI_MP_ACCESS_TOKEN:'APP_USR-fixture-no-real-token',MAEVI_MP_WEBHOOK_SECRET:'fixture-no-real-secret-12345',MAEVI_PUBLIC_URL:'https://maevi.example'},paymentNetwork:async()=>{throw Error('rede bloqueada nos testes');}};
 function fixture(t,options={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'maevi-commerce-'));let time=Date.now();
-  const app=createApp({dataDir:path.join(root,'data'),assetDir:path.join(root,'assets'),adminKey:'fixture-admin-key',now:()=>time,...options});
+  const app=createApp({dataDir:path.join(root,'data'),assetDir:path.join(root,'assets'),adminKey:'fixture-admin-key',now:()=>time,...testStore,...options});
   t.after(async()=>{await app.close();if(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep+'maevi-commerce-'))fs.rmSync(root,{recursive:true,force:true});});
   async function request(url,{method='GET',data,raw,headers={},ip='fixture'}={}){
     const req=Readable.from(raw!==undefined?[raw]:data===undefined?[]:[JSON.stringify(data)]);
@@ -16,4 +18,4 @@ function fixture(t,options={}){
   const createOrder=(changes={},key='fixture-order-000001')=>post('/api/orders',{...orderInput,...changes},{'idempotency-key':key});
   return {app,root,request,post,login,createOrder,orderInput,advance:ms=>{time+=ms;}};
 }
-module.exports={fixture};
+module.exports={fixture,testStore};

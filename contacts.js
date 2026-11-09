@@ -16,8 +16,7 @@
   popup.addEventListener('keydown',event=>{if(event.key==='Escape'){close();document.getElementById('instagram-show').focus();}});
   async function load(){
     try{
-      const {store,payment}=await window.MaeviStore.api('/api/store');footer.replaceChildren();
-      if(payment?.live){document.documentElement.dataset.mode='live';for(const node of document.querySelectorAll('[data-live]'))node.textContent=node.dataset.live;for(const node of document.querySelectorAll('[data-demo-only]'))node.hidden=true;document.dispatchEvent(new CustomEvent('maevi:live'));}
+      const {store}=await window.MaeviStore.api('/api/store');footer.replaceChildren();
       const legal=[store.legalName,store.documentId&&(store.documentId.length>14?'CNPJ ':'CPF ')+store.documentId,store.legalAddress].filter(Boolean);
       const legalNode=document.getElementById('store-legal');legalNode.textContent=legal.join(' · ');legalNode.hidden=!legal.length;
       const policy=typeof store.policy==='string'?store.policy.trim():'';

@@ -2,10 +2,8 @@
   'use strict';
   const storeApp=window.MaeviStore,{api,money,escapeHTML:esc,toast}=storeApp;
   const el=id=>document.getElementById(id),form=el('checkout-form'),field=name=>form.elements.namedItem(name);
-  const labels={demo_received:'Pedido de teste recebido',demo_preparing:'Em preparação (teste)',demo_ready:'Pronto para recebimento (teste)',demo_completed:'Teste concluído',demo_cancelled:'Teste cancelado',demo_expired:'Reserva expirada'};
-  Object.assign(labels,{demo_payment_pending:'Checkout de teste iniciado',demo_payment_review:'Pagamento de teste em conferência',demo_paid:'Pagamento de teste aprovado'});
   const liveLabels={demo_received:'Pedido recebido · aguardando pagamento',demo_payment_pending:'Aguardando pagamento',demo_payment_review:'Pagamento em conferência',demo_paid:'Pagamento aprovado',demo_preparing:'Em preparação',demo_ready:'Pronto para envio ou retirada',demo_completed:'Pedido concluído',demo_cancelled:'Pedido cancelado',demo_expired:'Reserva expirada'};
-  const isLive=()=>Boolean(paymentOptions?.live)||document.documentElement.dataset.mode==='live',label=status=>(isLive()?liveLabels:labels)[status]||status;
+  const label=status=>liveLabels[status]||status;
   let paymentOptions=null,store=null,items=[],step=0,quote=null,requestId=0,currentOrder=null,attempt=null,submitting=false,postalRequest=0;
   try{const saved=JSON.parse(sessionStorage.getItem('maevi-attempt'));if(saved&&/^[a-f0-9]{64}$/.test(saved.signature)&&typeof saved.key==='string')attempt=saved;}catch{}
   const access=()=>{const value=storeApp.getLastOrder();return value&&/^MV-[A-F0-9]{16}$/.test(value.id)&&/^[a-f0-9]{48}$/.test(value.token)?value:null;};
@@ -27,7 +25,7 @@
   }
   function summary(totals){
     const lines=totals.items.map(i=>`<div><span>${esc(i.name)} · ${i.size} × ${i.quantity}</span><strong>${money(i.lineCents)}</strong></div>`).join('');
-    return `<div class="order-lines">${lines}<div><span>Subtotal</span><strong>${money(totals.subtotalCents)}</strong></div>${totals.discountCents?`<div class="discount-line"><span>Cupom ${esc(totals.coupon.code)}</span><strong>− ${money(totals.discountCents)}</strong></div>`:''}<div><span>${totals.shipping?.method==='delivery'?(isLive()?'Entrega':'Entrega (teste)'):(isLive()?'Retirada':'Retirada (teste)')}</span><strong>${money(totals.shippingCents||0)}</strong></div><div class="order-total"><span>${isLive()?'Total':'Total de teste'}</span><strong>${money(totals.totalCents)}</strong></div></div>`;
+    return `<div class="order-lines">${lines}<div><span>Subtotal</span><strong>${money(totals.subtotalCents)}</strong></div>${totals.discountCents?`<div class="discount-line"><span>Cupom ${esc(totals.coupon.code)}</span><strong>− ${money(totals.discountCents)}</strong></div>`:''}<div><span>${totals.shipping?.method==='delivery'?(('Entrega')):(('Retirada'))}</span><strong>${money(totals.shippingCents||0)}</strong></div><div class="order-total"><span>${('Total')}</span><strong>${money(totals.totalCents)}</strong></div></div>`;
   }
   function initialSummary(){
     const catalog=storeApp.getProducts();const selected=items.map(i=>{const p=catalog.find(p=>p.id===i.id);return {...i,name:p?.name||'Peça',lineCents:(p?.priceCents||0)*i.quantity};});
@@ -35,7 +33,7 @@
   }
   function review(){
     const s=shippingSelection(),a=checkoutAddress();
-    el('checkout-review').innerHTML=`<div class="review-block"><button type="button" data-edit-step="0">Editar</button><strong>SEUS DADOS</strong>${esc(field('name').value)}<br>${esc(field('email').value)}<br>${esc(field('phone').value)}</div><div class="review-block"><button type="button" data-edit-step="1">Editar</button><strong>${s.method==='delivery'?'ENTREGA':'RETIRADA'}</strong>${s.method==='delivery'?`${esc(a.street)}, ${esc(a.number)} ${esc(a.complement)}<br>${esc(a.district)} · ${esc(a.city)} / ${esc(a.state)}<br>CEP ${esc(a.cep)}`:esc(store.pickupAddress||'Endereço será definido antes da abertura.')}<p class="field-note">${isLive()?(s.method==='delivery'?'Prazo estimado a partir da confirmação do pagamento.':'Avisaremos pelo seu contato quando o pedido estiver pronto para retirada.'):(s.method==='delivery'?'Prazo e valor demonstrativos; nenhuma entrega será realizada.':'Retirada simulada; não compareça a um endereço com este pedido de teste.')}</p></div>`;
+    el('checkout-review').innerHTML=`<div class="review-block"><button type="button" data-edit-step="0">Editar</button><strong>SEUS DADOS</strong>${esc(field('name').value)}<br>${esc(field('email').value)}<br>${esc(field('phone').value)}</div><div class="review-block"><button type="button" data-edit-step="1">Editar</button><strong>${s.method==='delivery'?'ENTREGA':'RETIRADA'}</strong>${s.method==='delivery'?`${esc(a.street)}, ${esc(a.number)} ${esc(a.complement)}<br>${esc(a.district)} · ${esc(a.city)} / ${esc(a.state)}<br>CEP ${esc(a.cep)}`:esc(store.pickupAddress||'Combine a retirada pelo WhatsApp da loja.')}<p class="field-note">${((s.method==='delivery'?'Prazo estimado a partir da confirmação do pagamento.':'Avisaremos pelo seu contato quando o pedido estiver pronto para retirada.'))}</p></div>`;
   }
   async function updateQuote(){
     const id=++requestId;quote=null;el('place-order').disabled=true;el('coupon-message').textContent='Conferindo os valores…';
@@ -46,10 +44,10 @@
   }
   function renderMethods(){
     const choices=[];
-    if(store.pickupEnabled)choices.push({id:'pickup',name:'Retirar na loja',detail:isLive()?(store.pickupAddress?'Sem custo · '+store.pickupAddress:'Sem custo de entrega'):'Retirada simulada · sem custo de entrega'});
-    if(store.deliveryEnabled)choices.push({id:'delivery',name:store.deliveryLabel,detail:`A partir de ${money(store.deliveryCents)} · prazo estimado de ${store.deliveryMinDays} a ${store.deliveryMaxDays} dias úteis${isLive()?'':' (teste)'}`});
+    if(store.pickupEnabled)choices.push({id:'pickup',name:'Retirar na loja',detail:((store.pickupAddress?'Sem custo · '+store.pickupAddress:'Sem custo de entrega'))});
+    if(store.deliveryEnabled)choices.push({id:'delivery',name:store.deliveryLabel,detail:`A partir de ${money(store.deliveryCents)} · prazo estimado de ${store.deliveryMinDays} a ${store.deliveryMaxDays} dias úteis`});
     el('shipping-methods').innerHTML=choices.map((m,index)=>`<label class="shipping-option"><input name="shippingMethod" type="radio" value="${m.id}" ${index===0?'checked':''}><span><strong>${esc(m.name)}</strong><small>${esc(m.detail)}</small></span></label>`).join('');
-    el('pickup-details').textContent=store.pickupAddress||'O endereço de retirada será configurado antes da abertura da loja.';toggleDelivery();
+    el('pickup-details').textContent=store.pickupAddress||'Combine a retirada pelo WhatsApp da loja.';toggleDelivery();
   }
   function toggleDelivery(){
     const delivery=shippingSelection().method==='delivery';el('delivery-fields').hidden=!delivery;el('pickup-details').hidden=delivery;
@@ -59,7 +57,7 @@
   form.addEventListener('input',event=>{event.target.setCustomValidity?.('');if(event.target.name==='coupon'){invalidate();el('coupon-message').textContent='Clique em Aplicar para conferir o cupom.';}});
   el('checkout').addEventListener('click',async()=>{
     el('checkout').disabled=true;el('checkout-message').textContent='Preparando seu checkout…';
-    try{const config=await api('/api/store');store=config.store;paymentOptions=config.payment;document.querySelector('.payment-notice strong').textContent=paymentOptions.live?'Pagamento seguro pelo Mercado Pago':paymentOptions.configured?'Mercado Pago · ambiente de teste':'Pagamento ainda não ativado';document.querySelector('.payment-notice p').textContent=paymentOptions.message;items=storeApp.getCart();if(!items.length)throw Error('Sua sacola está vazia.');renderMethods();initialSummary();el('cart-dialog').close();el('checkout-dialog').showModal();showStep(0);el('checkout-message').textContent='';}
+    try{const config=await api('/api/store');store=config.store;paymentOptions=config.payment;document.querySelector('.payment-notice strong').textContent=paymentOptions.configured?'Pagamento seguro pelo Mercado Pago':'Pagamentos indisponíveis no momento';document.querySelector('.payment-notice p').textContent=paymentOptions.message;items=storeApp.getCart();if(!items.length)throw Error('Sua sacola está vazia.');renderMethods();initialSummary();el('cart-dialog').close();el('checkout-dialog').showModal();showStep(0);el('checkout-message').textContent='';}
     catch(error){el('checkout-message').textContent=error.message;}finally{el('checkout').disabled=!storeApp.getCart().length;}
   });
   el('checkout-next').addEventListener('click',async()=>{
@@ -88,15 +86,15 @@
       if(!attempt||attempt.signature!==signature){attempt={signature,key:crypto.randomUUID()};try{sessionStorage.setItem('maevi-attempt',JSON.stringify(attempt));}catch{}}
       const result=await api('/api/orders',{method:'POST',headers:{'Idempotency-Key':attempt.key},body});
       storeApp.rememberOrder({id:result.order.id,token:result.token});attempt=null;try{sessionStorage.removeItem('maevi-attempt');}catch{}
-      storeApp.emptyCart();form.reset();el('checkout-dialog').close();el('last-order').hidden=false;showOrder(result.order);await storeApp.refreshCatalog();if(paymentOptions?.live&&result.order.status==='demo_received')startPayment();
+      storeApp.emptyCart();form.reset();el('checkout-dialog').close();el('last-order').hidden=false;showOrder(result.order);await storeApp.refreshCatalog();if(paymentOptions?.configured&&result.order.status==='demo_received')startPayment();
     }catch(error){el('order-message').textContent=error.message+' Se a conexão falhou, tente novamente sem alterar os dados: a mesma tentativa não duplica o pedido.';if(error.status===409){quote=null;storeApp.refreshCatalog();}}
     finally{submitting=false;el('place-order').disabled=!quote;}
   });
   function showOrder(order){
     currentOrder=order;const delivery=order.shipping?.method==='delivery',a=order.address;
-    el('order-detail').innerHTML=`<div class="checkmark" aria-hidden="true">✓</div><h2>${['demo_cancelled','demo_expired'].includes(order.status)?'Seu pedido foi atualizado.':isLive()?(order.status==='demo_paid'?'Pagamento aprovado!':'Recebemos seu pedido.'):'Recebemos seu teste.'}</h2><p class="order-number">${esc(order.id)}</p><p class="status-pill">${esc(label(order.status))}</p>${summary(order)}<div class="receipt-identity"><p>${esc(order.customer.name)} · ${esc(order.customer.email)}</p>${a?`<p>${esc(a.street)}, ${esc(a.number)} · ${esc(a.city)} / ${esc(a.state)} · CEP ${esc(a.cep)}</p>`:''}<p>${delivery?esc(order.shipping.label):isLive()?'Retirada na loja'+(order.shipping?.addressLabel?' · '+esc(order.shipping.addressLabel):''):'Retirada simulada'}</p></div>${order.status==='demo_received'&&order.reservationExpiresAt?`<p class="reservation-note">${isLive()?'Suas peças estão reservadas até '+esc(new Date(order.reservationExpiresAt).toLocaleString('pt-BR'))+'. Finalize o pagamento antes desse horário.':'Reserva de teste até '+esc(new Date(order.reservationExpiresAt).toLocaleString('pt-BR'))+'. Após esse prazo, o estoque é liberado automaticamente. Não há cobrança.'}</p>`:''}<ol class="order-timeline">${(order.history||[{status:order.status,at:order.createdAt}]).map(h=>`<li>${esc(label(h.status))}<small>${esc(new Date(h.at).toLocaleString('pt-BR'))}</small></li>`).join('')}</ol><details class="access-key"><summary>Guardar os dados para consultar depois</summary><p>Guarde o número do pedido e esta chave privada. Ela permite consultar os dados deste teste; não compartilhe.</p><label>Chave de consulta<input readonly value="${esc(access()?.token||'')}" aria-label="Chave privada de consulta"></label></details><p class="delivery-note">${isLive()?'Guarde o número e a chave do pedido para acompanhar a situação por aqui.':'Este pedido é demonstrativo. Nenhum valor foi cobrado, nenhuma mensagem foi enviada e nenhuma mercadoria será entregue.'}</p>`;
+    el('order-detail').innerHTML=`<div class="checkmark" aria-hidden="true">✓</div><h2>${['demo_cancelled','demo_expired'].includes(order.status)?'Seu pedido foi atualizado.':((order.status==='demo_paid'?'Pagamento aprovado!':'Recebemos seu pedido.'))}</h2><p class="order-number">${esc(order.id)}</p><p class="status-pill">${esc(label(order.status))}</p>${summary(order)}<div class="receipt-identity"><p>${esc(order.customer.name)} · ${esc(order.customer.email)}</p>${a?`<p>${esc(a.street)}, ${esc(a.number)} · ${esc(a.city)} / ${esc(a.state)} · CEP ${esc(a.cep)}</p>`:''}<p>${delivery?esc(order.shipping.label):('Retirada na loja'+(order.shipping?.addressLabel?' · '+esc(order.shipping.addressLabel):''))}</p></div>${order.status==='demo_received'&&order.reservationExpiresAt?`<p class="reservation-note">${('Suas peças estão reservadas até '+esc(new Date(order.reservationExpiresAt).toLocaleString('pt-BR'))+'. Finalize o pagamento antes desse horário.')}</p>`:''}<ol class="order-timeline">${(order.history||[{status:order.status,at:order.createdAt}]).map(h=>`<li>${esc(label(h.status))}<small>${esc(new Date(h.at).toLocaleString('pt-BR'))}</small></li>`).join('')}</ol><details class="access-key"><summary>Guardar os dados para consultar depois</summary><p>Guarde o número do pedido e esta chave privada. Ela permite consultar os dados deste pedido; não compartilhe.</p><label>Chave de consulta<input readonly value="${esc(access()?.token||'')}" aria-label="Chave privada de consulta"></label></details><p class="delivery-note">${('Guarde o número e a chave do pedido para acompanhar a situação por aqui.')}</p>`;
     el('cancel-order').hidden=order.status!=='demo_received';el('pay-order').hidden=!(paymentOptions?.configured&&order.status==='demo_received'||order.status==='demo_payment_pending'&&order.payment?.checkoutUrl&&Date.parse(order.payment.expiresAt)>Date.now());el('order-status-message').textContent='';
-    if(order.payment?.provider){const note=el('order-detail').querySelector('.delivery-note');if(note)note.textContent=isLive()?(order.status==='demo_paid'?'Recebemos a confirmação do Mercado Pago. Vamos preparar suas peças e avisar você pelo contato informado.':'Pagamento pelo Mercado Pago. Assim que ele for aprovado, a situação muda para Pagamento aprovado. Pix pode levar alguns instantes. Guarde o número e a chave do pedido para acompanhar.'):'Checkout Mercado Pago de teste. Use somente conta compradora e cartão de teste. A aprovação depende da consulta ao provedor; não indica venda real. Reservas com pagamento iniciado ficam retidas até conferência.';}
+    if(order.payment?.provider){const note=el('order-detail').querySelector('.delivery-note');if(note)note.textContent=((order.status==='demo_paid'?'Recebemos a confirmação do Mercado Pago. Vamos preparar suas peças e avisar você pelo contato informado.':'Pagamento pelo Mercado Pago. Assim que ele for aprovado, a situação muda para Pagamento aprovado. Pix pode levar alguns instantes. Guarde o número e a chave do pedido para acompanhar.'));}
     if(!el('order-dialog').open)el('order-dialog').showModal();
   }
   async function refreshOrder(){
@@ -107,7 +105,7 @@
   }
   el('refresh-order').addEventListener('click',refreshOrder);el('last-order').addEventListener('click',refreshOrder);el('last-order').hidden=!access();
   async function startPayment(){
-    const saved=access();if(!saved)return;el('pay-order').disabled=true;el('order-status-message').textContent=isLive()?'Abrindo o pagamento seguro do Mercado Pago…':'Preparando checkout de teste…';
+    const saved=access();if(!saved)return;el('pay-order').disabled=true;el('order-status-message').textContent=('Abrindo o pagamento seguro do Mercado Pago…');
     try{const result=await api('/api/orders/'+saved.id+'/payment-session',{method:'POST',headers:{'X-Order-Token':saved.token},body:'{}'});const url=new URL(result.session.url);if(url.protocol!=='https:'||url.hostname!=='www.mercadopago.com.br'||url.port||url.username||url.password||!url.pathname.startsWith('/checkout/'))throw Error('Endereço de pagamento inválido.');location.assign(url.href);}
     catch(error){el('order-status-message').textContent=error.message;}finally{el('pay-order').disabled=false;}
   }
@@ -116,7 +114,7 @@
     history.replaceState(null,'',location.pathname);refreshOrder();
   }
   el('cancel-order').addEventListener('click',async()=>{
-    const saved=access();if(!saved||!confirm(isLive()?'Cancelar este pedido e liberar as peças reservadas?':'Cancelar este pedido de teste e liberar as peças reservadas?'))return;
+    const saved=access();if(!saved||!confirm(('Cancelar este pedido e liberar as peças reservadas?')))return;
     el('cancel-order').disabled=true;
     try{const result=await api('/api/orders/'+saved.id+'/cancel',{method:'POST',headers:{'X-Order-Token':saved.token},body:'{}'});showOrder(result.order);await storeApp.refreshCatalog();}
     catch(error){el('order-status-message').textContent=error.message;}finally{el('cancel-order').disabled=false;}
