@@ -234,7 +234,7 @@ function renderManager(){
   const items=managerItems(),keys=new Set(items.map(keyOf));for(const k of manager.selected)if(!keys.has(k))manager.selected.delete(k);
   let html='';
   if(manager.tab==='products')html=items.map(p=>{const k=keyOf(p),total=sum(p.stock);return `<div class="mrow${p.active?'':' is-off'}" role="listitem"><input type="checkbox" class="mcheck" data-key="${k}" aria-label="Selecionar ${escapeHTML(p.name)}"${manager.selected.has(k)?' checked':''}><img src="${escapeHTML(p.image)}" alt="" loading="lazy"><div class="minfo"><strong>${escapeHTML(p.name)}</strong><small>${escapeHTML(p.category)} · ${escapeHTML(p.color)} · ${money(p.priceCents)} · ${total} em estoque${total===0?' · esgotada':''}</small></div><div class="mtoggles">${sw('active',k,p.active,'Vitrine')}${sw('featured',k,p.featured,'Destaque')}</div><div class="mactions"><button type="button" data-mact="edit" data-key="${k}">Editar</button><button type="button" class="danger-link" data-mact="delete" data-key="${k}">Excluir</button></div></div>`;}).join('');
-  else if(manager.tab==='orders')html=items.map(o=>{const k=keyOf(o),del=canDeleteOrder(o);return `<div class="mrow" role="listitem"><input type="checkbox" class="mcheck" data-key="${k}" aria-label="Selecionar ${escapeHTML(o.id)}"${manager.selected.has(k)?' checked':''}><span class="mbadge">${o.items.reduce((a,i)=>a+i.quantity,0)}</span><div class="minfo"><strong>${escapeHTML(o.id)}</strong><small>${escapeHTML(o.customer.name)} · ${new Date(o.createdAt).toLocaleDateString('pt-BR')} · ${money(o.totalCents)}</small></div><span class="status-pill">${escapeHTML(labels[o.status]||o.status)}</span><div class="mactions">${(next[o.status]||[]).filter(s=>s!=='demo_cancelled').map(s=>`<button type="button" data-mact="status" data-status="${s}" data-key="${k}">${escapeHTML(labels[s])}</button>`).join('')}${canCancelOrder(o)?`<button type="button" data-mact="cancel" data-key="${k}">Cancelar</button>`:''}<button type="button" class="danger-link" data-mact="delete" data-key="${k}"${del?'':' disabled title="Cancele ou conclua o pedido antes de excluir"'}>Excluir</button></div></div>`;}).join('');
+  else if(manager.tab==='orders')html=items.map(o=>{const k=keyOf(o),del=canDeleteOrder(o);return `<div class="mrow" role="listitem"><input type="checkbox" class="mcheck" data-key="${k}" aria-label="Selecionar ${escapeHTML(o.id)}"${manager.selected.has(k)?' checked':''}><span class="mbadge">${o.items.reduce((a,i)=>a+i.quantity,0)}</span><div class="minfo"><strong>${escapeHTML(o.id)}</strong><small>${escapeHTML(o.customer.name)} · ${new Date(o.createdAt).toLocaleDateString('pt-BR')} · ${money(o.totalCents)}</small></div><span class="status-pill">${escapeHTML(labels[o.status]||o.status)}</span><div class="mactions">${(next[o.status]||[]).filter(s=>s!=='demo_cancelled').map(s=>`<button type="button" data-mact="status" data-status="${s}" data-key="${k}">${escapeHTML(labels[s])}</button>`).join('')}${canCancelOrder(o)?`<button type="button" data-mact="cancel" data-key="${k}">Cancelar</button>`:''}<button type="button" class="danger-link" data-mact="delete" data-key="${k}"${del?'':' title="Será cancelado e excluído"'}>Excluir</button></div></div>`;}).join('');
   else html=items.map(c=>{const k=keyOf(c);return `<div class="mrow${c.active?'':' is-off'}" role="listitem"><input type="checkbox" class="mcheck" data-key="${escapeHTML(k)}" aria-label="Selecionar ${escapeHTML(c.code)}"${manager.selected.has(k)?' checked':''}><span class="mbadge">${c.percent}%</span><div class="minfo"><strong>${escapeHTML(c.code)}</strong><small>Mínimo ${money(c.minCents)} · ${c.used}/${c.maxUses} usos${c.expiresAt?' · até '+new Date(c.expiresAt).toLocaleDateString('pt-BR'):''}${couponExpired(c)?' · expirado':''}</small></div><div class="mtoggles">${sw('active',k,c.active,'Ativo')}</div><div class="mactions"><button type="button" data-mact="edit" data-key="${escapeHTML(k)}">Editar</button><button type="button" class="danger-link" data-mact="delete" data-key="${escapeHTML(k)}">Excluir</button></div></div>`;}).join('');
   $('#manager-list').innerHTML=html||`<p class="empty-state">Nada por aqui${$('#manager-search').value||filter.value?' com esses filtros':''}.</p>`;
   const all=$('#manager-all');all.checked=items.length>0&&items.every(i=>manager.selected.has(keyOf(i)));all.indeterminate=!all.checked&&manager.selected.size>0;
@@ -248,12 +248,12 @@ const find=key=>manager.tab==='products'?products.find(p=>String(p.id)===key):ma
 const couponInput=(c,changes)=>({code:c.code,percent:c.percent,minCents:c.minCents,maxUses:c.maxUses,active:c.active,expiresAt:c.expiresAt||'',version:c.version,...changes});
 async function act(action,item){
   if(manager.tab==='products'){
-    if(action==='delete')return api('/api/admin/products/'+item.id,{method:'DELETE',body:'{}'});
+    if(action==='delete')return api('/api/admin/products/'+item.id,{method:'DELETE',body:JSON.stringify({force:true})});
     const change={show:{active:true},hide:{active:false},feature:{featured:true},unfeature:{featured:false}}[action];
     return api('/api/admin/products/'+item.id,{method:'PUT',body:JSON.stringify({...item,...change,version:item.version||0})});
   }
   if(manager.tab==='orders'){
-    if(action==='delete')return api('/api/admin/orders/'+item.id,{method:'DELETE',body:'{}'});
+    if(action==='delete')return api('/api/admin/orders/'+item.id,{method:'DELETE',body:JSON.stringify({force:true})});
     return api('/api/admin/orders/'+item.id,{method:'PATCH',body:JSON.stringify({status:action==='cancel'?'demo_cancelled':action})});
   }
   if(action==='delete')return api('/api/admin/coupons/'+encodeURIComponent(item.code),{method:'DELETE',body:'{}'});
@@ -264,13 +264,13 @@ const nouns={products:['peça','peças'],orders:['pedido','pedidos'],coupons:['c
 async function runBulk(action,list){
   if(action==='delete'){
     const [one,many]=nouns[manager.tab];
-    const extra={products:' As fotos enviadas para elas também serão apagadas. Pedidos antigos continuam registrados.',orders:' Só pedidos finalizados ou cancelados podem ser excluídos.',coupons:' Pedidos que já usaram o cupom continuam registrados.'}[manager.tab];
+    const inOrders=manager.tab==='products'?list.filter(p=>orders.some(o=>OPEN_ORDER.includes(o.status)&&o.items.some(i=>i.id===p.id))).length:0,open=manager.tab==='orders'?list.filter(o=>!canDeleteOrder(o)).length:0;
+    const extra={products:' As fotos enviadas também serão apagadas.'+(inOrders?` ${inOrders===list.length?(list.length===1?'Ela está':'Elas estão'):inOrders+' delas estão'} em pedido em andamento: o pedido continua registrado com o nome e o preço.`:' Pedidos antigos continuam registrados.'),orders:open?` ${open===list.length?(list.length===1?'Ele ainda está':'Eles ainda estão'):open+' deles ainda estão'} em andamento: ${open===1?'será cancelado':'serão cancelados'} antes (as peças voltam ao estoque).`:'',coupons:' Pedidos que já usaram o cupom continuam registrados.'}[manager.tab];
     if(!await confirmBox(`Excluir ${list.length===1?'1 '+one:list.length+' '+many}?`,`Esta ação não pode ser desfeita.${extra}`))return;
   }
   if(action==='cancel'&&!await confirmBox(`Cancelar ${list.length===1?'1 pedido':list.length+' pedidos'}?`,'As peças voltam para o estoque.','Cancelar pedidos'))return;
   manager.busy=true;renderManager();let ok=0;const errors=[];
   for(const item of list){
-    if(manager.tab==='orders'&&action==='delete'&&!canDeleteOrder(item)){errors.push(item.id+': ainda em andamento');continue;}
     if(manager.tab==='orders'&&action==='cancel'&&!canCancelOrder(item)){errors.push(item.id+': não pode ser cancelado');continue;}
     try{await act(action,item);ok++;}catch(error){errors.push(list.length===1?error.message:(item.name||item.id||item.code)+': '+error.message);}
   }
@@ -308,8 +308,8 @@ $('#manager-dialog').addEventListener('change',async event=>{
 $('#manager-search').addEventListener('input',renderManager);
 document.addEventListener('maevi:admin-ready',renderManager);
 $('#delete-product').addEventListener('click',async()=>{
-  if(!editing)return;if(!await confirmBox(`Excluir ${editing.name}?`,'A peça sai da vitrine e do painel. Esta ação não pode ser desfeita.'))return;
-  try{await api('/api/admin/products/'+editing.id,{method:'DELETE',body:'{}'});snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);renderManager();toast('Peça excluída.');}
+  if(!editing)return;const busy=orders.some(o=>OPEN_ORDER.includes(o.status)&&o.items.some(i=>i.id===editing.id));if(!await confirmBox(`Excluir ${editing.name}?`,'A peça sai da vitrine e do painel. Esta ação não pode ser desfeita.'+(busy?' Ela está em pedido em andamento: o pedido continua registrado com o nome e o preço.':'')))return;
+  try{await api('/api/admin/products/'+editing.id,{method:'DELETE',body:JSON.stringify({force:true})});snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);renderManager();toast('Peça excluída.');}
   catch(error){$('#edit-message').textContent=error.message;}
 });
 window.MaeviAdmin=Object.freeze({api,money,escapeHTML,refresh,toast});
