@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const {api,money,escapeHTML:esc,refresh}=window.MaeviAdmin,el=id=>document.getElementById(id);
-  const form=el('store-settings-form'),couponForm=el('coupon-form');let config=null,coupons=[],dirty=false,uploading=0,generation=0;
+  const form=el('store-settings-form'),couponForm=el('coupon-form');let config=null,coupons=[],dirty=false,generation=0;
   function values(form){return new FormData(form);}
   function populate(store){
     config=store;const data={...store,deliveryPrice:(store.deliveryCents/100).toFixed(2),freeShippingFrom:(store.freeShippingFromCents/100).toFixed(2)};
@@ -18,7 +18,6 @@
   }
   document.addEventListener('maevi:admin-ready',load);
   document.addEventListener('maevi:admin-logout',()=>{generation++;config=null;coupons=[];dirty=false;form.reset();couponForm.reset();couponForm.hidden=true;el('coupon-list').replaceChildren();});
-  document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{el('settings-panel').hidden=button.dataset.tab!=='settings';el('coupons-panel').hidden=button.dataset.tab!=='coupons';}));
   form.addEventListener('input',()=>{dirty=true;el('settings-message').textContent='Há alterações ainda não salvas.';});
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(!config){el('settings-message').textContent='Atualize os dados para carregar as configurações.';return;}
@@ -39,15 +38,8 @@
   couponForm.addEventListener('submit',async event=>{
     event.preventDefault();const data=values(couponForm),date=data.get('expiresAt');const input={code:data.get('code').trim().toUpperCase(),percent:Number(data.get('percent')),minCents:Math.round(Number(data.get('minPrice'))*100),maxUses:Number(data.get('maxUses')),active:data.get('active')==='on',expiresAt:date?new Date(date).toISOString():'',version:Number(couponForm.dataset.version)};
     el('save-coupon').disabled=true;el('coupon-admin-message').textContent='Salvando…';
-    try{await api('/api/admin/coupons',{method:'POST',body:JSON.stringify(input)});couponForm.hidden=true;await refresh(true);el('admin-message').textContent='Cupom salvo. Ele já pode ser validado no checkout.';}
+    try{await api('/api/admin/coupons',{method:'POST',body:JSON.stringify(input)});couponForm.hidden=true;await refresh(true);el('dashboard-message').textContent='Cupom salvo. Ele já pode ser validado no checkout.';}
     catch(error){el('coupon-admin-message').textContent=error.message;}finally{el('save-coupon').disabled=false;}
   });
-  document.querySelectorAll('[data-upload-target]').forEach(input=>input.addEventListener('change',async()=>{
-    const file=input.files?.[0],message=el(input.id+'-message');if(!file)return;
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>4194304){message.textContent='Escolha uma foto JPG, PNG ou WebP de até 4 MB.';input.value='';return;}
-    uploading++;el('save-product').disabled=true;message.textContent='Enviando sua foto…';
-    try{const result=await api('/api/admin/images',{method:'POST',headers:{'Content-Type':file.type},body:file});if(!el('dashboard').hidden){el('product-form').elements.namedItem(input.dataset.uploadTarget).value=result.image;message.textContent=`Foto enviada (${result.width} × ${result.height}). Salve a peça para usar essa imagem.`;}}
-    catch(error){message.textContent=error.message;}finally{input.value='';uploading--;el('save-product').disabled=uploading>0;}
-  }));
   if(!el('dashboard').hidden)load();
 })();

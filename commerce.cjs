@@ -1,4 +1,4 @@
-const {fail}=require('./errors.cjs');
+const {fail,Problem}=require('./errors.cjs');
 const states=new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
 const defaults=Object.freeze({version:1,name:'MAÉVI',email:'',whatsapp:'41985213878',instagram:'maevioficial',pickupAddress:'',pickupEnabled:true,deliveryEnabled:true,deliveryLabel:'Entrega demonstrativa',deliveryCents:1990,deliveryMinDays:3,deliveryMaxDays:8,freeShippingFromCents:0,reservationMinutes:30});
 function text(value,label,max=200,optional=false){
@@ -35,4 +35,45 @@ function coupon(input){
   if(typeof c.active!=='boolean'||typeof c.expiresAt!=='string'||(c.expiresAt&&(!/^\d{4}-\d{2}-\d{2}T/.test(c.expiresAt)||!Number.isFinite(Date.parse(c.expiresAt)))))fail(400,'Situação ou validade do cupom inválida.');
   return c;
 }
-module.exports={defaults,text,integer,cep,phone,settings,address,shipping,coupon,states};
+
+const catalogDefaults=Object.freeze({categories:Object.freeze(['Vestidos','Conjuntos','Blusas']),sizes:Object.freeze(['P','M','G','GG'])});
+function catalogList(value,label,{max,length,pattern,reserved=[]}){
+  if(!Array.isArray(value)||value.length<1||value.length>max)throw new Problem(400,`Cadastre de 1 a ${max} ${label}.`);
+  const seen=new Set();
+  return value.map(item=>{
+    if(typeof item!=='string')throw new Problem(400,`Revise ${label}.`);
+    const clean=item.normalize('NFC').trim().replace(/\s+/g,' ');
+    if(!clean||clean.length>length||!pattern.test(clean))throw new Problem(400,`"${clean.slice(0,24)||'vazio'}" não é válido em ${label}. Use letras, números, espaço ou hífen (até ${length} caracteres).`);
+    const key=clean.toLocaleLowerCase('pt-BR');
+    if(reserved.includes(key))throw new Problem(400,`"${clean}" é um nome reservado da loja.`);
+    if(seen.has(key))throw new Problem(400,`"${clean}" aparece duas vezes em ${label}.`);
+    seen.add(key);return clean;
+  });
+}
+function catalog(input,current){
+  const categories=catalogList(input?.categories,'categorias',{max:20,length:40,pattern:/^[\p{L}\p{N}][\p{L}\p{N} &'-]*$/u,reserved:['todas','todas as peças']});
+  const sizes=catalogList(input?.sizes,'tamanhos',{max:12,length:10,pattern:/^[\p{L}\p{N}][\p{L}\p{N} /.-]*$/u});
+  const renames={categories:{},sizes:{}};
+  for(const [kind,list] of [['categories',categories],['sizes',sizes]]){
+    const raw=input?.renames?.[kind];if(raw===undefined)continue;
+    if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).length>20)throw new Problem(400,'Renomeação inválida.');
+    for(const [from,to] of Object.entries(raw)){
+      if(!current[kind].includes(from)||typeof to!=='string'||!list.includes(to.normalize('NFC').trim().replace(/\s+/g,' ')))throw new Problem(400,'Renomeação inválida.');
+      renames[kind][from]=to.normalize('NFC').trim().replace(/\s+/g,' ');
+    }
+  }
+  return {categories,sizes,renames};
+}
+function ownerEmail(value){
+  if(typeof value!=='string')throw new Problem(400,'Informe um e-mail válido.');
+  const email=value.trim().toLowerCase();
+  if(email.length>254||!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(email))throw new Problem(400,'Informe um e-mail válido.');
+  return email;
+}
+function ownerPassword(value,email){
+  if(typeof value!=='string'||value.length<10)throw new Problem(400,'A senha precisa ter pelo menos 10 caracteres.');
+  if(value.length>200)throw new Problem(400,'A senha pode ter no máximo 200 caracteres.');
+  if(/^(.)\1+$/.test(value)||value.toLowerCase()===email||/^(0123456789|1234567890|senha12345|maevi12345)/i.test(value))throw new Problem(400,'Escolha uma senha menos previsível.');
+  return value;
+}
+module.exports={catalogDefaults,catalog,ownerEmail,ownerPassword,defaults,text,integer,cep,phone,settings,address,shipping,coupon,states};

@@ -7,7 +7,7 @@
   addEventListener('scroll',()=>{if(!queued){queued=true;requestAnimationFrame(updateScroll);}},{passive:true});updateScroll();
   back.addEventListener('click',()=>{window.scrollTo({top:0,behavior:reduced.matches?'instant':'smooth'});header.querySelector('a').focus({preventScroll:true});});
   document.getElementById('menu-open').addEventListener('click',()=>menu.showModal());
-  menu.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>menu.close()));
+  menu.addEventListener('click',event=>{if(event.target.closest('a'))menu.close();});
   if(!reduced.matches&&'IntersectionObserver' in window){
     const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('is-visible');observer.unobserve(entry.target);}}),{threshold:0.12});
     document.querySelectorAll('.reveal').forEach(node=>{node.classList.add('will-reveal');observer.observe(node);});
