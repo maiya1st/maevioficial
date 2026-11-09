@@ -307,7 +307,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
       }
       const names={'/':'index.html','/admin':'admin.html','/admin/':'admin.html'};
       const relative=names[route]||route.slice(1);
-      const allowed=['index.html','styles.css','boutique.css','checkout.css','app.js','checkout.js','contacts.js','catalog-core.js','experience.js','admin.html','admin.js','admin.css','operations.js'];
+      const allowed=['index.html','styles.css','boutique.css','checkout.css','app.js','checkout.js','contacts.js','catalog-core.js','experience.js','immersive.js','immersive.css','admin.html','admin.js','admin.css','operations.js'];
       if(!allowed.includes(relative)&&!/^assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(relative))fail(404,'Arquivo não encontrado.');
       const file=relative.startsWith('assets/')?path.join(assetDir,relative.slice(7)):path.join(__dirname,relative);if(!fs.existsSync(file)||!fs.statSync(file).isFile())fail(404,'Arquivo não encontrado.');
       const real=fs.realpathSync(file),expected=path.resolve(file);if(process.platform==='win32'?real.toLowerCase()!==expected.toLowerCase():real!==expected)fail(404,'Arquivo não encontrado.');
