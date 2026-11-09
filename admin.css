@@ -386,3 +386,12 @@ td button{border:1px solid var(--line);padding:8px 14px;border-radius:999px}
   .manager-bulk>div::-webkit-scrollbar{display:none}
   .manager-bulk .button{flex:none;min-height:40px;padding:0 14px;font-size:10px}
 }
+.ready-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-top:20px;max-width:760px}
+.ready-card h3{font-size:28px;display:flex;justify-content:space-between;align-items:baseline}
+.ready-card h3 span{font:600 14px Manrope,sans-serif;color:var(--muted)}
+.ready-card ul{list-style:none;padding:0;margin:12px 0 0}
+.ready-card li{display:flex;gap:12px;padding:10px 0;border-top:1px solid #eeeae2}
+.ready-card li b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#f4dcc0;color:#7a4a17;flex:none;font-size:13px}
+.ready-card li.ok b{background:var(--ok);color:#fff}
+.ready-card li p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+#legal-fieldset .field-note,.settings-delivery>.field-note{margin:-4px 0 12px}

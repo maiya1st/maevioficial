@@ -128,3 +128,7 @@ Base neutra (areia/papel) com oliva e rosé nos detalhes; títulos em Cormorant 
 ## Gerenciamento em pop-up · v0.9.1
 
 Botões **Gerenciar vitrine**, **Gerenciar pedidos** e **Gerenciar cupons** abrem um pop-up com abas, busca, filtros e seleção múltipla: mostrar/ocultar e destacar peças com um toque, editar, excluir em lote, cancelar e excluir pedidos, ativar/desativar e excluir cupons. Toda exclusão pede confirmação. Peças que estão em pedidos em andamento podem ser excluídas após um aviso (o pedido continua registrado com nome e preço). Pedidos em andamento são cancelados, com devolução do estoque, antes de serem apagados. A API sem confirmação (`force`) continua recusando esses casos. Ao excluir uma peça, as fotos enviadas que ninguém mais usa também são apagadas. O editor de peça ganhou o botão **Excluir peça**.
+
+## Pagamento real · v1.0
+
+`MAEVI_MP_MODE=production` liga as vendas reais pelo Mercado Pago (Pix e cartão em até 6x, sem boleto). O servidor exige credencial de produção e `live_mode` verdadeiro, libera sozinho as reservas de checkouts abandonados, estorna pelo painel ao cancelar um pedido pago e impede excluir pedidos pagos. Com o modo real ligado, os textos de teste e demonstração somem da vitrine e do checkout, o rodapé mostra a identificação da loja e a política de trocas, e a vitrine deixa de ser `noindex`. Passo a passo em **MERCADO-PAGO.md**.

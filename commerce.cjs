@@ -9,8 +9,16 @@ function text(value,label,max=200,optional=false){
 function integer(value,label,min,max){if(!Number.isInteger(value)||value<min||value>max)fail(400,`${label} inválido.`);return value;}
 function cep(value){if(typeof value!=='string'||!/^\d{5}-?\d{3}$/.test(value))fail(400,'Informe um CEP de oito dígitos.');const code=value.replace('-','');if(/^(\d)\1{7}$/.test(code))fail(400,'CEP inválido.');return code;}
 function phone(value,optional=true){if(optional&&(value===undefined||value===''))return '';if(typeof value!=='string'||!/^[+()\d\s-]{10,25}$/.test(value))fail(400,'Telefone inválido.');const digits=value.replace(/\D/g,'').replace(/^55(?=\d{10,11}$)/,'');if(!/^\d{10,11}$/.test(digits)||/^(\d)\1+$/.test(digits))fail(400,'Informe telefone com DDD.');return digits;}
+function documentId(value){
+  if(value===undefined||value==='')return '';
+  if(typeof value!=='string')fail(400,'CPF ou CNPJ inválido.');
+  const digits=value.replace(/\D/g,'');
+  if(digits.length===11){if(/^(\d)\1{10}$/.test(digits))fail(400,'CPF inválido.');const check=n=>{let sum=0;for(let i=0;i<n;i++)sum+=Number(digits[i])*(n+1-i);const r=(sum*10)%11;return r===10?0:r;};if(check(9)!==Number(digits[9])||check(10)!==Number(digits[10]))fail(400,'CPF inválido. Confira os números.');return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
+  if(digits.length===14){if(/^(\d)\1{13}$/.test(digits))fail(400,'CNPJ inválido.');const calc=n=>{const w=n===12?[5,4,3,2,9,8,7,6,5,4,3,2]:[6,5,4,3,2,9,8,7,6,5,4,3,2];const sum=w.reduce((a,x,i)=>a+x*Number(digits[i]),0),r=sum%11;return r<2?0:11-r;};if(calc(12)!==Number(digits[12])||calc(13)!==Number(digits[13]))fail(400,'CNPJ inválido. Confira os números.');return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');}
+  fail(400,'Informe um CPF (11 números) ou CNPJ (14 números).');
+}
 function settings(input){
-  const s={version:input.version,name:text(input.name,'Nome da loja',100),email:text(input.email,'E-mail',254,true),whatsapp:phone(input.whatsapp),instagram:text(input.instagram,'Instagram',40,true),pickupAddress:text(input.pickupAddress,'Endereço de retirada',350,true),pickupEnabled:input.pickupEnabled,deliveryEnabled:input.deliveryEnabled,deliveryLabel:text(input.deliveryLabel,'Nome da entrega',80),deliveryCents:integer(input.deliveryCents,'Valor de entrega',0,100000),deliveryMinDays:integer(input.deliveryMinDays,'Prazo mínimo',1,90),deliveryMaxDays:integer(input.deliveryMaxDays,'Prazo máximo',1,90),freeShippingFromCents:integer(input.freeShippingFromCents,'Valor para frete grátis',0,10000000),reservationMinutes:integer(input.reservationMinutes,'Tempo de reserva',15,1440)};
+  const s={version:input.version,name:text(input.name,'Nome da loja',100),email:text(input.email,'E-mail',254,true),whatsapp:phone(input.whatsapp),instagram:text(input.instagram,'Instagram',40,true),pickupAddress:text(input.pickupAddress,'Endereço de retirada',350,true),pickupEnabled:input.pickupEnabled,deliveryEnabled:input.deliveryEnabled,deliveryLabel:text(input.deliveryLabel,'Nome da entrega',80),deliveryCents:integer(input.deliveryCents,'Valor de entrega',0,100000),deliveryMinDays:integer(input.deliveryMinDays,'Prazo mínimo',1,90),deliveryMaxDays:integer(input.deliveryMaxDays,'Prazo máximo',1,90),freeShippingFromCents:integer(input.freeShippingFromCents,'Valor para frete grátis',0,10000000),reservationMinutes:integer(input.reservationMinutes,'Tempo de reserva',15,1440),legalName:text(input.legalName,'Nome ou razão social',150,true),documentId:documentId(input.documentId),legalAddress:text(input.legalAddress,'Endereço da empresa',300,true),policy:text(input.policy,'Política de trocas',6000,true)};
   if(s.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email))fail(400,'E-mail da loja inválido.');
   if(s.instagram&&!/^[a-zA-Z0-9._]{1,30}$/.test(s.instagram))fail(400,'Use apenas o nome do perfil do Instagram, sem @ ou URL.');
   if(typeof s.pickupEnabled!=='boolean'||typeof s.deliveryEnabled!=='boolean'||(!s.pickupEnabled&&!s.deliveryEnabled)||s.deliveryMinDays>s.deliveryMaxDays)fail(400,'Configure ao menos uma forma de recebimento e prazos válidos.');
@@ -24,7 +32,7 @@ function address(input){
 function shipping(input,store,subtotalCents){
   if(input!==undefined&&(!input||typeof input!=='object'||Array.isArray(input)))fail(400,'Forma de recebimento inválida.');
   const method=input?.method||'pickup';
-  if(method==='pickup'){if(!store.pickupEnabled)fail(409,'Retirada indisponível no momento.');return {method,label:'Retirada na loja (teste)',priceCents:0,addressLabel:store.pickupAddress||'Endereço será definido antes da abertura.'};}
+  if(method==='pickup'){if(!store.pickupEnabled)fail(409,'Retirada indisponível no momento.');return {method,label:'Retirada na loja',priceCents:0,addressLabel:store.pickupAddress||'Endereço será definido antes da abertura.'};}
   if(method!=='delivery'||!store.deliveryEnabled)fail(409,'Entrega indisponível no momento.');
   const code=cep(input.cep),free=store.freeShippingFromCents>0&&subtotalCents>=store.freeShippingFromCents;
   return {method,label:store.deliveryLabel,cep:code,priceCents:free?0:store.deliveryCents,minDays:store.deliveryMinDays,maxDays:store.deliveryMaxDays,estimateOnly:true};
