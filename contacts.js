@@ -18,6 +18,7 @@
       const {store}=await window.MaeviStore.api('/api/store');footer.replaceChildren();
       const phone=typeof store.whatsapp==='string'&&/^\d{10,11}$/.test(store.whatsapp)?store.whatsapp:'';
       const handle=typeof store.instagram==='string'&&/^[a-zA-Z0-9._]{1,30}$/.test(store.instagram)?store.instagram:'';
+      window.MaeviContacts=Object.freeze({whatsapp:phone});document.dispatchEvent(new CustomEvent('maevi:contacts'));
       for(const link of document.querySelectorAll('[data-whatsapp-link]')){link.hidden=!phone;if(phone)link.href='https://wa.me/55'+phone;}
       document.getElementById('whatsapp-pending').hidden=Boolean(phone);
       document.getElementById('whatsapp-number').textContent=phone?`(${phone.slice(0,2)}) ${phone.slice(2,-4)}-${phone.slice(-4)}`:'Número em confirmação';

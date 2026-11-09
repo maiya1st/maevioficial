@@ -109,3 +109,7 @@ O convite do Instagram aparece após cinco segundos quando a página está visí
 Adicionados banco MySQL/MariaDB, persistência de fotos no banco, configuração HTTPS com Host exato e cookie administrativo Secure. O modo local mantém SQLite e arquivos locais. O modo MAEVI_HOSTING=setup permite criar o site na hospedagem com uma página de preparação, sem abrir catálogo, painel ou pagamentos. Depois de criar o banco e preencher as variáveis privadas, MAEVI_HOSTING=hostinger habilita a loja demonstrativa. Veja HOSTINGER.md antes da primeira implantação.
 
 A chave do painel online e os campos da hospedagem estão no arquivo privado .env.hostinger.local gerado por prepare-hostinger.cjs. Esse arquivo não é enviado ao GitHub ou incluído no ZIP. Não o compartilhe no chat.
+
+## Redesign da vitrine · 09/11/2026
+
+Base neutra (areia/papel) com oliva e rosé nos detalhes; títulos em Cormorant Garamond e textos em Manrope com corpo mínimo de 11–15px. Home abre com uma única foto forte (no celular, imagem em tela cheia com chamada e botão sobrepostos), categorias Vestidos, Conjuntos e Blusas, e vitrine com fotos em 3:4, categoria, nome, preço e cor. A ficha da peça organiza galeria deslizável, preço, cor, tamanhos em grade, botão principal e atalho "Tirar dúvidas no WhatsApp" com o nome da peça e o tamanho já preenchidos (usa o número cadastrado no painel). No celular, a ficha ocupa a tela inteira e o botão de compra fica fixo no rodapé. Os estilos novos estão no fim de `boutique.css`.
