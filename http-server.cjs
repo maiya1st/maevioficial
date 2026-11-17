@@ -1,7 +1,7 @@
 const http=require('node:http');
 const {createApp}=require('./backend.cjs');
 function createLocalServer(handler){
-  const server=http.createServer({maxHeaderSize:8192,headersTimeout:10000,requestTimeout:15000,keepAliveTimeout:5000,connectionsCheckingInterval:1000},handler);
+  const server=http.createServer({maxHeaderSize:8192,headersTimeout:10000,requestTimeout:60000,keepAliveTimeout:5000,connectionsCheckingInterval:1000},handler);
   server.maxHeadersCount=50;server.maxRequestsPerSocket=100;server.maxConnections=32;
   server.setTimeout(15000,socket=>socket.destroy());return server;
 }

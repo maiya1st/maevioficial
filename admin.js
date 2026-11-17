@@ -18,7 +18,8 @@ function loggedIn(value){
   if(!value){authEpoch++;products=[];orders=[];activity=[];$('#admin-products').innerHTML='';$('#admin-orders').innerHTML='';$('#admin-activity').innerHTML='';$('#stats').innerHTML='';$('#product-form').reset();if($('#edit-dialog').open)$('#edit-dialog').close();document.dispatchEvent(new Event('maevi:admin-logout'));}
 }
 async function api(url,options={}){
-  let response;try{response=await fetch(url,{signal:AbortSignal.timeout(20000),...options,headers:{'Content-Type':'application/json','X-Maevi-Request':'1',...options.headers}});}catch{throw new Error('Não foi possível falar com a loja. Confira a conexão e tente de novo.');}
+  const {timeout=20000,...rest}=options;options=rest;
+  let response;try{response=await fetch(url,{signal:AbortSignal.timeout(timeout),...options,headers:{'Content-Type':'application/json','X-Maevi-Request':'1',...options.headers}});}catch{throw new Error('Não foi possível falar com a loja. Confira a conexão e tente de novo.');}
   let result={};try{result=await response.json();}catch{}
   if(!response.ok){if(response.status===401&&!url.endsWith('/login')&&!url.endsWith('/account'))loggedIn(false);const error=new Error(result.error||'Não foi possível concluir.');error.status=response.status;throw error;}return result;
 }
@@ -158,15 +159,37 @@ $('#remove-color').addEventListener('click',async()=>{
   if(v.id)removedIds.push(v.id);variants.splice(vIndex,1);vIndex=0;$('#stock-grid').innerHTML='';loadVariant(0);
 });
 $('#join-color').addEventListener('change',e=>{const x=products.find(p=>p.id===Number(e.target.value));e.target.value='';if(!x)return;syncVariant();variants.push(variantFrom(x));loadVariant(variants.length-1);toast(`${x.name} (${x.color}) virou uma cor desta peça. Salve para confirmar.`);});
+// Reduz a foto no aparelho antes de enviar: fotos de celular têm 3 a 8 MB; na loja bastam ~2000 px.
+async function prepareImage(file){
+  const MAX=2000;let bitmap;
+  try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}
+  catch{if(['image/jpeg','image/png','image/webp'].includes(file.type)&&file.size<=4194304)return file;throw new Error(`Não foi possível abrir ${file.name||'a foto'}. Use JPG ou PNG (no iPhone: Ajustes, Câmera, Formatos, Mais Compatível).`);}
+  const scale=Math.min(1,MAX/Math.max(bitmap.width,bitmap.height)),w=Math.round(bitmap.width*scale),h=Math.round(bitmap.height*scale);
+  const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(bitmap,0,0,w,h);bitmap.close?.();
+  let blob=null;for(const q of [0.86,0.78,0.7]){blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',q));if(blob&&blob.size<=1800000)break;}
+  if(!blob)throw new Error('Não foi possível preparar a foto.');
+  if(['image/jpeg','image/png','image/webp'].includes(file.type)&&file.size<=blob.size&&file.size<=4194304&&scale===1)return file;
+  if(blob.size>4194304)throw new Error('A foto continua grande demais depois de reduzida.');
+  return new File([blob],(file.name||'foto').replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
+}
 async function uploadPhotos(files){
   const v=variants[vIndex],note=$('#photo-note'),list=[...files].filter(Boolean),room=MAX_PHOTOS-v.photos.length;
   if(!list.length)return;if(room<=0){toast('Esta cor já tem 8 fotos.');return;}
-  const valid=list.filter(f=>['image/jpeg','image/png','image/webp'].includes(f.type)&&f.size<=4194304).slice(0,room);
-  if(valid.length<Math.min(list.length,room))toast('Algumas fotos foram ignoradas: use JPG, PNG ou WebP de até 4 MB.');
+  const valid=list.filter(f=>!f.type||f.type.startsWith('image/')||/\.(heic|heif|jpe?g|png|webp)$/i.test(f.name||'')).slice(0,room);
+  if(valid.length<Math.min(list.length,room))toast('Alguns arquivos não são fotos e foram ignorados.');
   if(list.length>room)toast(`Só cabem mais ${room} foto${room===1?'':'s'} nesta cor.`);
+  const failures=[];
   uploads++;$('#save-product').disabled=true;$('#photo-grid').classList.add('is-uploading');
-  try{for(const [i,file] of valid.entries()){note.textContent=`Enviando foto ${i+1} de ${valid.length}…`;const r=await api('/api/admin/images',{method:'POST',headers:{'Content-Type':file.type},body:file});v.photos.push(r.image);if(variants[vIndex]===v)renderPhotos();}note.textContent=`${v.photos.length} foto${v.photos.length===1?'':'s'} nesta cor. A primeira é a capa.`;}
-  catch(error){note.textContent=error.message;}
+  try{
+    for(const [i,original] of valid.entries()){
+      const label=valid.length>1?` ${i+1} de ${valid.length}`:'';
+      try{note.textContent=`Preparando foto${label}…`;const file=await prepareImage(original);
+        note.textContent=`Enviando foto${label} (${Math.max(1,Math.round(file.size/1024))} KB)…`;
+        const r=await api('/api/admin/images',{method:'POST',headers:{'Content-Type':file.type},body:file,timeout:90000});v.photos.push(r.image);if(variants[vIndex]===v)renderPhotos();}
+      catch(error){failures.push(`${original.name||'foto'}: ${error.message}`);}
+    }
+    note.textContent=failures.length?`${valid.length-failures.length} de ${valid.length} fotos enviadas. ${failures[0]}`:`${v.photos.length} foto${v.photos.length===1?'':'s'} nesta cor. A primeira é a capa.`;
+  }
   finally{uploads--;$('#photo-grid').classList.remove('is-uploading');$('#save-product').disabled=uploads>0;renderTabs();preview();}
 }
 $('#photo-input').addEventListener('change',e=>{uploadPhotos(e.target.files);e.target.value='';});
