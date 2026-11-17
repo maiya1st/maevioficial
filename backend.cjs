@@ -179,6 +179,12 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     p.featured=input.featured===undefined?false:input.featured;if(typeof p.featured!=='boolean')fail(400,'Destaque inválido.');
     if(p.secondaryImage&&!/^https:\/\/images\.unsplash\.com\/[^\s"<>]+$/.test(p.secondaryImage)&&!/^\/assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(p.secondaryImage))fail(400,'Segunda imagem inválida. Use /assets/ ou images.unsplash.com.');
     p.stock=Object.fromEntries(catalog.sizes.map(s=>[s,p.stock[s]]));
+    // Fotos extras: além da principal e da segunda, até 6 (8 no total).
+    const extra=input.extraImages===undefined?[]:input.extraImages;
+    const validImage=v=>typeof v==='string'&&v.length<=500&&(/^https:\/\/images\.unsplash\.com\/[^\s"<>]+$/.test(v)||/^\/assets\/[a-zA-Z0-9._-]+\.(png|jpg|jpeg|webp)$/.test(v));
+    if(!Array.isArray(extra)||extra.length>6||!extra.every(validImage))fail(400,'Use até 8 fotos por peça, enviadas pelo painel.');
+    if(extra.length&&!p.secondaryImage)fail(400,'Fotos extras exigem a segunda foto.');
+    p.extraImages=[...new Set(extra)].filter(v=>v!==p.image&&v!==p.secondaryImage);
     // Compre o look: até 6 peças que combinam.
     const look=input.look===undefined?[]:input.look;
     if(!Array.isArray(look)||look.length>6||!look.every(v=>Number.isSafeInteger(v)&&v>0&&v!==id))fail(400,'Escolha até 6 peças para o look.');
@@ -198,7 +204,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   }
   const OPEN_ORDER=['demo_received','demo_payment_pending','demo_payment_review','demo_paid','demo_preparing','demo_ready'];
   async function removeUnusedImages(candidates){
-    const used=new Set((await allProducts()).flatMap(p=>[p.image,p.secondaryImage]));
+    const used=new Set((await allProducts()).flatMap(p=>[p.image,p.secondaryImage,...(p.extraImages||[])]));
     for(const src of new Set(candidates)){
       const match=/^\/assets\/(upload-[a-f0-9]{24}\.(?:jpg|png|webp))$/.exec(src||'');if(!match||used.has(src))continue;
       if(databaseImages)await db.prepare('DELETE FROM images WHERE name=?').run(match[1]);
@@ -404,7 +410,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
               const current=await getProduct(id);if(!current)fail(404,'Peça não encontrada.');
               const open=(await db.prepare(`SELECT data FROM orders WHERE json_extract(data,'$.status') IN (${OPEN_ORDER.map(()=>'?').join(',')})`).all(...OPEN_ORDER)).map(r=>JSON.parse(r.data)).find(o=>o.items.some(i=>i.id===id));
               if(open&&!force)fail(409,`A peça ${current.name} está no pedido ${open.id}, ainda em andamento. Confirme para excluir mesmo assim: o pedido continua registrado.`);
-              await db.prepare('DELETE FROM products WHERE id=?').run(id);await removeUnusedImages([current.image,current.secondaryImage]);await record('deleted','product',id);return current;
+              await db.prepare('DELETE FROM products WHERE id=?').run(id);await removeUnusedImages([current.image,current.secondaryImage,...(current.extraImages||[])]);await record('deleted','product',id);return current;
             });return send(res,200,{deleted:{id:removed.id,name:removed.name}});
           }
           if(/^\/api\/admin\/orders\/MV-[A-F0-9]{16}$/.test(route)&&req.method==='DELETE'){
