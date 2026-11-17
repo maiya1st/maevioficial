@@ -60,3 +60,15 @@ test('pop-up de boas-vindas e cupom de primeira compra',async t=>{
   assert.equal((await f.request('/api/admin/subscribers',{headers:{cookie}})).data.subscribers.length,0);
   assert.equal((await settings({welcomeEnabled:false})).status,200);assert.equal((await store()).welcome,null);
 });
+
+test('até 8 fotos por peça',async t=>{
+  const f=fixture(t),cookie=await f.login();
+  const p=(await f.request('/api/admin/products',{headers:{cookie}})).data.products.find(x=>x.id===1);
+  const put=data=>f.request('/api/admin/products/1',{method:'PUT',data:{...p,version:p.version||0,...data},headers:{cookie}});
+  const photos=n=>Array.from({length:n},(_,i)=>`/assets/foto-${i}.jpg`);
+  assert.equal((await put({secondaryImage:'',extraImages:photos(1)})).status,400,'extra sem segunda foto');
+  assert.equal((await put({secondaryImage:'/assets/b.jpg',extraImages:photos(7)})).status,400,'mais de 8 fotos');
+  assert.equal((await put({secondaryImage:'/assets/b.jpg',extraImages:['javascript:alert(1)']})).status,400);
+  const ok=await put({secondaryImage:'/assets/b.jpg',extraImages:[...photos(6)]});assert.equal(ok.status,200);assert.equal(ok.data.product.extraImages.length,6);
+  assert.deepEqual((await f.request('/api/products')).data.products.find(x=>x.id===1).extraImages,photos(6));
+});

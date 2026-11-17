@@ -56,9 +56,12 @@ function render(){
   filter.innerHTML='<option value="">Todas as categorias</option>'+catalog.categories.map(c=>`<option${c===chosen?' selected':''}>${escapeHTML(c)}</option>`).join('');
   const q=$('#admin-product-search').value.trim().toLocaleLowerCase('pt-BR');
   const list=products.filter(p=>[p.name,p.category,p.color].join(' ').toLocaleLowerCase('pt-BR').includes(q)&&(!filter.value||p.category===filter.value)&&(!$('#low-stock-only').checked||Object.values(p.stock).some(n=>n<=2))&&(!$('#hidden-only').checked||!p.active));
-  $('#admin-products').innerHTML=list.length?list.map(p=>{
-    const total=sum(p.stock),badges=[!p.active&&'<span class="badge muted">Oculta</span>',p.featured&&'<span class="badge">Destaque</span>',total===0?'<span class="badge alert">Esgotada</span>':Object.values(p.stock).some(n=>n<=2)&&'<span class="badge warn">Estoque baixo</span>'].filter(Boolean).join('');
-    return `<article class="admin-card${p.active?'':' is-hidden'}"><button type="button" class="admin-card-photo" data-edit="${p.id}" aria-label="Editar ${escapeHTML(p.name)}"><img src="${escapeHTML(p.image)}" alt="" loading="lazy"><span class="badges">${badges}</span></button><div class="admin-card-body"><p class="admin-card-cat">${escapeHTML(p.category)} · ${escapeHTML(p.color)}</p><h3>${escapeHTML(p.name)}</h3><p class="admin-card-price">${money(p.priceCents)}</p><ul class="stock-chips" aria-label="Estoque por tamanho">${catalog.sizes.map(s=>`<li class="${!(p.stock[s]>0)?'zero':p.stock[s]<=2?'low':''}"><b>${escapeHTML(s)}</b>${p.stock[s]??0}</li>`).join('')}</ul><div class="admin-card-actions"><button type="button" class="button small" data-edit="${p.id}">Editar</button><button type="button" class="text-link" data-toggle="${p.id}">${p.active?'Ocultar da vitrine':'Mostrar na vitrine'}</button></div></div></article>`;
+  const seen=new Set(),cardsList=list.filter(p=>{const k=p.colorGroup||'p'+p.id;if(seen.has(k))return false;seen.add(k);return true;});
+  $('#admin-products').innerHTML=cardsList.length?cardsList.map(p=>{
+    const tones=p.colorGroup?products.filter(x=>x.colorGroup===p.colorGroup).sort((a,b)=>a.id-b.id):[p];
+    const stockBy=Object.fromEntries(catalog.sizes.map(s=>[s,tones.reduce((t,x)=>t+(x.stock[s]||0),0)])),total=sum(stockBy),photos=tones.reduce((t,x)=>t+[x.image,x.secondaryImage,...(x.extraImages||[])].filter(Boolean).length,0);
+    const badges=[!p.active&&'<span class="badge muted">Oculta</span>',p.featured&&'<span class="badge">Destaque</span>',total===0?'<span class="badge alert">Esgotada</span>':tones.some(x=>Object.values(x.stock).some(n=>n<=2))&&'<span class="badge warn">Estoque baixo</span>'].filter(Boolean).join('');
+    return `<article class="admin-card${p.active?'':' is-hidden'}"><button type="button" class="admin-card-photo" data-edit="${p.id}" aria-label="Editar ${escapeHTML(p.name)}"><img src="${escapeHTML(p.image)}" alt="" loading="lazy"><span class="badges">${badges}</span><span class="photo-count">${photos} foto${photos===1?'':'s'}</span></button><div class="admin-card-body"><p class="admin-card-cat">${escapeHTML(p.category)} · ${tones.length>1?`<span class="tone-dots">${tones.map(x=>`<i style="background:${escapeHTML(x.hex)}" title="${escapeHTML(x.color)}"></i>`).join('')}</span>${tones.length} cores`:escapeHTML(p.color)}</p><h3>${escapeHTML(p.name)}</h3><p class="admin-card-price">${money(p.priceCents)}</p><ul class="stock-chips" aria-label="Estoque por tamanho${tones.length>1?', somando as cores':''}">${catalog.sizes.map(s=>`<li class="${!(stockBy[s]>0)?'zero':stockBy[s]<=2?'low':''}"><b>${escapeHTML(s)}</b>${stockBy[s]}</li>`).join('')}</ul><div class="admin-card-actions"><button type="button" class="button small" data-edit="${p.id}">Editar</button><button type="button" class="text-link" data-toggle="${p.id}">${p.active?'Ocultar da vitrine':'Mostrar na vitrine'}</button></div></div></article>`;
   }).join(''):`<div class="empty-state"><p>${products.length?'Nenhuma peça com esses filtros.':'Nenhuma peça cadastrada ainda.'}</p><button type="button" class="button" id="empty-new">+ Cadastrar peça</button></div>`;
   const oq=$('#admin-order-search').value.trim().toLocaleLowerCase('pt-BR'),status=$('#admin-order-status').value;
   const visibleOrders=orders.filter(o=>(!status||status===o.status)&&[o.id,o.customer.name,o.customer.email].join(' ').toLocaleLowerCase('pt-BR').includes(oq));
@@ -74,8 +77,8 @@ $('#admin-products').addEventListener('click',async event=>{
   const edit=event.target.closest('[data-edit]');if(edit){openEditor(products.find(p=>p.id===Number(edit.dataset.edit)));return;}
   if(event.target.closest('#empty-new')){openEditor(null);return;}
   const toggle=event.target.closest('[data-toggle]');if(!toggle)return;
-  const p=products.find(x=>x.id===Number(toggle.dataset.toggle));toggle.disabled=true;
-  try{await api('/api/admin/products/'+p.id,{method:'PUT',body:JSON.stringify({...p,active:!p.active,version:p.version||0})});await refresh(true);toast(p.active?'Peça ocultada da vitrine.':'Peça visível na vitrine.');}
+  const p=products.find(x=>x.id===Number(toggle.dataset.toggle)),tones=p.colorGroup?products.filter(x=>x.colorGroup===p.colorGroup):[p];toggle.disabled=true;
+  try{for(const x of tones)await api('/api/admin/products/'+x.id,{method:'PUT',body:JSON.stringify({...x,active:!p.active,version:x.version||0})});await refresh(true);toast(p.active?'Peça ocultada da vitrine.':'Peça visível na vitrine.');}
   catch(error){toast(error.message);toggle.disabled=false;}
 });
 $('#admin-orders').addEventListener('click',async event=>{
@@ -87,75 +90,120 @@ $('#admin-orders').addEventListener('click',async event=>{
   try{const r=await api('/api/admin/orders/'+button.dataset.order,{method:'PATCH',body:JSON.stringify({status:button.dataset.status})});await refresh(true);toast(r.refunded?'Pedido cancelado e valor estornado.':'Situação do pedido atualizada.');}catch(error){toast(error.message);button.disabled=false;}
 });
 
-/* ---------- Editor de peça ---------- */
-const form=$('#product-form');let editing=null,snapshot='',uploads=0;
+/* ---------- Editor de peça (cores, fotos e estoque) ---------- */
+const form=$('#product-form'),MAX_PHOTOS=8;
+let editing=null,snapshot='',uploads=0,variants=[],vIndex=0,groupKey='',removedIds=[];
+let lookSel=new Set(),chart={columns:['Busto','Cintura','Quadril'],rows:{}};
+const newGroup=()=>'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const groupOf=p=>p?.colorGroup?products.filter(x=>x.colorGroup===p.colorGroup).sort((a,b)=>a.id-b.id):p?[p]:[];
+function variantFrom(p){return {id:p?.id||null,version:p?.version||0,color:p?.color||'',hex:p?.hex||'#303521',photos:[p?.image,p?.secondaryImage,...(p?.extraImages||[])].filter(Boolean),stock:{...(p?.stock||{})}};}
 function stockInputs(stock){
   $('#stock-grid').innerHTML=catalog.sizes.map(s=>`<div class="stepper"><span>${escapeHTML(s)}</span><button type="button" data-step="-1" aria-label="Diminuir ${escapeHTML(s)}">−</button><input type="number" inputmode="numeric" min="0" max="10000" value="${Number(stock?.[s])||0}" data-size="${escapeHTML(s)}" aria-label="Estoque do tamanho ${escapeHTML(s)}"><button type="button" data-step="1" aria-label="Aumentar ${escapeHTML(s)}">+</button></div>`).join('');
 }
 function readStock(){return Object.fromEntries([...$('#stock-grid').querySelectorAll('input[data-size]')].map(i=>[i.dataset.size,Math.max(0,Math.min(10000,Math.trunc(Number(i.value))||0))]));}
-function setPhoto(slot,value){
-  const box=form.querySelector(`[data-slot="${slot}"]`),img=box.querySelector('img');form.elements[slot].value=value||'';
-  img.hidden=!value;if(value)img.src=value;else img.removeAttribute('src');box.querySelector('.photo-empty').hidden=Boolean(value);box.querySelector('.photo-remove').hidden=!value;box.classList.toggle('has-photo',Boolean(value));
+function syncVariant(){const v=variants[vIndex];if(!v||!$('#stock-grid').querySelector('input'))return;v.color=$('#v-color').value.trim();v.hex=$('#v-hex').value;v.stock=readStock();}
+function renderTabs(){
+  $('#variant-tabs').innerHTML=variants.map((v,i)=>`<button type="button" role="tab" data-variant="${i}" aria-selected="${i===vIndex}"><i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(v.hex)?v.hex:'#303521')}"></i>${escapeHTML(v.color||'Nova cor')}${v.photos[0]?'':'<em>sem foto</em>'}</button>`).join('')+`<button type="button" class="add-variant" id="add-variant">+ Adicionar cor</button>`;
+  $('#remove-color').hidden=variants.length<2;
+  const used=new Set(variants.map(v=>v.id));
+  $('#join-color').innerHTML='<option value="">Escolher peça…</option>'+products.filter(x=>!used.has(x.id)&&(!x.colorGroup||x.colorGroup!==groupKey)).map(x=>`<option value="${x.id}">${escapeHTML(x.name)} · ${escapeHTML(x.color)}</option>`).join('');
+}
+function renderPhotos(){
+  const v=variants[vIndex],n=v.photos.length;
+  $('#photo-grid').innerHTML=v.photos.map((src,i)=>`<figure class="photo-tile${i===0?' is-cover':''}"><img src="${escapeHTML(src)}" alt="Foto ${i+1}">${i===0?'<span class="cover-tag">Capa</span>':''}<button type="button" class="photo-remove-x" data-photo-remove="${i}" aria-label="Remover foto">×</button><div class="photo-tools"><button type="button" data-photo-move="${i}" data-dir="-1" aria-label="Mover para a esquerda"${i===0?' disabled':''}>‹</button>${i?`<button type="button" data-photo-cover="${i}">Capa</button>`:''}<button type="button" data-photo-move="${i}" data-dir="1" aria-label="Mover para a direita"${i===n-1?' disabled':''}>›</button></div></figure>`).join('')+(n<MAX_PHOTOS?`<label for="photo-input" class="photo-add${n?'':' is-empty'}"><b>+</b><span>${n?'Adicionar fotos':'Adicionar fotos desta cor'}</span><small>${n}/${MAX_PHOTOS}</small></label>`:'');
+}
+function loadVariant(i){
+  syncVariant();vIndex=i;const v=variants[i];
+  $('#v-color').value=v.color;$('#v-hex').value=/^#[0-9a-f]{6}$/i.test(v.hex)?v.hex:'#303521';$('#hex-label').textContent=$('#v-hex').value;
+  stockInputs(v.stock);renderPhotos();renderTabs();preview();
 }
 function formData(){
-  const f=new FormData(form);
-  return {name:f.get('name').trim(),category:f.get('category'),priceCents:Math.round(Number(String(f.get('price')).replace(',','.'))*100),color:f.get('color').trim(),hex:f.get('hex'),description:f.get('description').trim(),image:f.get('image').trim(),secondaryImage:f.get('secondaryImage').trim(),material:f.get('material'),care:f.get('care'),measurements:f.get('measurements'),featured:f.get('featured')==='on',active:f.get('active')==='on',stock:readStock(),version:Number(f.get('version'))||0,look:[...lookSel],sizeChart:readChart(),colors:[...colorSel].sort()};
+  syncVariant();const f=new FormData(form),ids=new Set(variants.map(v=>v.id).filter(Boolean));
+  return {name:f.get('name').trim(),category:f.get('category'),priceCents:Math.round(Number(String(f.get('price')).replace(',','.'))*100),description:f.get('description').trim(),material:f.get('material'),care:f.get('care'),measurements:f.get('measurements'),featured:f.get('featured')==='on',active:f.get('active')==='on',look:[...lookSel].filter(id=>!ids.has(id)),sizeChart:readChart(),variants:variants.map(v=>({id:v.id,color:v.color,hex:v.hex,photos:[...v.photos],stock:{...v.stock}})),removed:[...removedIds]};
 }
 function preview(){
-  const d=formData(),total=sum(d.stock);$('#hex-label').textContent=d.hex;$('#stock-total').textContent=`${total} unidade${total===1?'':'s'} no total`;
-  $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${d.image?`<img src="${escapeHTML(d.image)}" alt="">`:'<span>Sua foto aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color"><i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(d.hex)?d.hex:'#303521')}"></i>${escapeHTML(d.color||'Cor')}</p><p class="preview-sizes">${catalog.sizes.map(s=>`<span class="${d.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
+  const d=formData(),v=d.variants[vIndex]||{photos:[],stock:{}},total=sum(v.stock);$('#hex-label').textContent=$('#v-hex').value;$('#stock-total').textContent=`${total} unidade${total===1?'':'s'} desta cor`;
+  $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${v.photos[0]?`<img src="${escapeHTML(v.photos[0])}" alt="">`:'<span>A capa desta cor aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color">${d.variants.length>1?d.variants.map(x=>`<i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(x.hex)?x.hex:'#303521')}"></i>`).join('')+d.variants.length+' cores':`<i style="background:${escapeHTML(v.hex||'#303521')}"></i>${escapeHTML(v.color||'Cor')}`}</p><p class="preview-sizes">${catalog.sizes.map(s=>`<span class="${v.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${v.photos.length>1?`<p class="preview-hidden" style="color:var(--muted)">${v.photos.length} fotos nesta cor</p>`:''}${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
 }
-function openEditor(p,preset=null){
+function openEditor(p){
   editing=p||null;form.reset();$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
   $('#product-category').innerHTML=catalog.categories.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
-  const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:preset?{...preset.fields,id:'',version:'',hex:'#303521'}:{id:'',version:'',hex:'#303521',category:catalog.categories[0]||''};
-  for(const name of ['id','version','name','category','price','color','hex','description','material','care','measurements']){const input=form.elements.namedItem(name);if(input&&v[name]!==undefined)input.value=v[name];}
+  const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:{category:catalog.categories[0]||''};
+  for(const name of ['name','category','price','description','material','care','measurements']){const input=form.elements.namedItem(name);if(input&&v[name]!==undefined)input.value=v[name];}
   form.elements.active.checked=p?p.active:true;form.elements.featured.checked=Boolean(p?.featured);
-  setPhoto('image',p?.image||'');setPhoto('secondaryImage',p?.secondaryImage||'');stockInputs(p?.stock);extrasOpen(p,preset);
-  form.querySelectorAll('.photo-slot .field-note').forEach((n,i)=>n.textContent=i?'Aparece ao passar o mouse e na galeria':'JPG, PNG ou WebP · até 4 MB · de preferência em pé (3:4)');
-  preview();snapshot=JSON.stringify(formData());$('#edit-dialog').showModal();form.elements.name.focus();
+  const group=groupOf(p);variants=group.length?group.map(variantFrom):[variantFrom(null)];vIndex=Math.max(0,variants.findIndex(x=>x.id===p?.id));groupKey=p?.colorGroup||'';removedIds=[];
+  $('#stock-grid').innerHTML='';
+  lookSel=new Set(p?.look||[]);
+  chart=p?.sizeChart?{columns:[...p.sizeChart.columns],rows:Object.fromEntries(Object.entries(p.sizeChart.rows).map(([k,x])=>[k,[...x]]))}:{columns:['Busto','Cintura','Quadril'],rows:{}};
+  $('#chart-copy').innerHTML='<option value="">Copiar tabela de outra peça…</option>'+products.filter(x=>x.sizeChart&&!group.some(g=>g.id===x.id)).map(x=>`<option value="${x.id}">${escapeHTML(x.name)} · ${escapeHTML(x.color)}</option>`).join('');
+  $('#look-search').value='';renderChart();renderPickers();
+  const i=vIndex;vIndex=0;loadVariant(i);
+  if(variants.length>1)$('#edit-title').textContent=`Editar peça · ${variants.length} cores`;
+  snapshot=JSON.stringify(formData());$('#edit-dialog').showModal();form.elements.name.focus();
 }
 function closeEditor(){if(JSON.stringify(formData())!==snapshot&&!confirm('Sair sem salvar as alterações desta peça?'))return;$('#edit-dialog').close();}
 $('#new-product').addEventListener('click',()=>openEditor(null));
 $('#close-edit').addEventListener('click',closeEditor);$('#cancel-edit').addEventListener('click',closeEditor);
 $('#edit-dialog').addEventListener('cancel',event=>{event.preventDefault();closeEditor();});
-form.addEventListener('input',event=>{if(event.target.name==='image'||event.target.name==='secondaryImage')setPhoto(event.target.name,event.target.value.trim());preview();});
+form.addEventListener('input',e=>{if(e.target.id==='v-color'||e.target.id==='v-hex'){syncVariant();renderTabs();}preview();});
 form.addEventListener('change',preview);
 $('#stock-grid').addEventListener('click',event=>{const b=event.target.closest('[data-step]');if(!b)return;const input=b.parentElement.querySelector('input');input.value=Math.max(0,Math.min(10000,(Number(input.value)||0)+Number(b.dataset.step)));preview();});
-async function upload(slot,file){
-  const box=form.querySelector(`[data-slot="${slot}"]`),note=box.querySelector('.field-note');
-  if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>4194304){note.textContent='Escolha uma foto JPG, PNG ou WebP de até 4 MB.';return;}
-  uploads++;$('#save-product').disabled=true;box.classList.add('is-uploading');note.textContent='Enviando a foto…';
-  try{const result=await api('/api/admin/images',{method:'POST',headers:{'Content-Type':file.type},body:file});setPhoto(slot,result.image);preview();note.textContent=`Foto enviada · ${result.width} × ${result.height}${result.height<result.width?' · dica: fotos em pé ficam melhores na vitrine':''}`;}
+$('#variant-tabs').addEventListener('click',e=>{
+  if(e.target.closest('#add-variant')){syncVariant();variants.push({id:null,version:0,color:'',hex:'#303521',photos:[],stock:{}});loadVariant(variants.length-1);$('#v-color').focus();return;}
+  const t=e.target.closest('[data-variant]');if(t)loadVariant(Number(t.dataset.variant));
+});
+$('#remove-color').addEventListener('click',async()=>{
+  if(variants.length<2)return;syncVariant();const v=variants[vIndex];
+  if(!await confirmBox(`Remover a cor ${v.color||'nova'}?`,v.id?'Esta cor sai da vitrine quando você salvar. As fotos dela também são apagadas.':'A cor ainda não foi salva.','Remover cor'))return;
+  if(v.id)removedIds.push(v.id);variants.splice(vIndex,1);vIndex=0;$('#stock-grid').innerHTML='';loadVariant(0);
+});
+$('#join-color').addEventListener('change',e=>{const x=products.find(p=>p.id===Number(e.target.value));e.target.value='';if(!x)return;syncVariant();variants.push(variantFrom(x));loadVariant(variants.length-1);toast(`${x.name} (${x.color}) virou uma cor desta peça. Salve para confirmar.`);});
+async function uploadPhotos(files){
+  const v=variants[vIndex],note=$('#photo-note'),list=[...files].filter(Boolean),room=MAX_PHOTOS-v.photos.length;
+  if(!list.length)return;if(room<=0){toast('Esta cor já tem 8 fotos.');return;}
+  const valid=list.filter(f=>['image/jpeg','image/png','image/webp'].includes(f.type)&&f.size<=4194304).slice(0,room);
+  if(valid.length<Math.min(list.length,room))toast('Algumas fotos foram ignoradas: use JPG, PNG ou WebP de até 4 MB.');
+  if(list.length>room)toast(`Só cabem mais ${room} foto${room===1?'':'s'} nesta cor.`);
+  uploads++;$('#save-product').disabled=true;$('#photo-grid').classList.add('is-uploading');
+  try{for(const [i,file] of valid.entries()){note.textContent=`Enviando foto ${i+1} de ${valid.length}…`;const r=await api('/api/admin/images',{method:'POST',headers:{'Content-Type':file.type},body:file});v.photos.push(r.image);if(variants[vIndex]===v)renderPhotos();}note.textContent=`${v.photos.length} foto${v.photos.length===1?'':'s'} nesta cor. A primeira é a capa.`;}
   catch(error){note.textContent=error.message;}
-  finally{uploads--;box.classList.remove('is-uploading');$('#save-product').disabled=uploads>0;}
+  finally{uploads--;$('#photo-grid').classList.remove('is-uploading');$('#save-product').disabled=uploads>0;renderTabs();preview();}
 }
-form.querySelectorAll('.photo-slot').forEach(box=>{
-  const slot=box.dataset.slot,input=box.querySelector('input[type=file]'),drop=box.querySelector('.photo-drop');
-  input.addEventListener('change',()=>{upload(slot,input.files?.[0]);input.value='';});
-  ['dragenter','dragover'].forEach(type=>drop.addEventListener(type,e=>{e.preventDefault();box.classList.add('is-over');}));
-  ['dragleave','drop'].forEach(type=>drop.addEventListener(type,()=>box.classList.remove('is-over')));
-  drop.addEventListener('drop',e=>{e.preventDefault();upload(slot,e.dataTransfer?.files?.[0]);});
-  box.querySelector('.photo-remove').addEventListener('click',()=>{if(slot==='image')input.click();else{setPhoto(slot,'');preview();}});
+$('#photo-input').addEventListener('change',e=>{uploadPhotos(e.target.files);e.target.value='';});
+$('#photo-grid').addEventListener('dragover',e=>{e.preventDefault();$('#photo-grid').classList.add('is-over');});
+$('#photo-grid').addEventListener('dragleave',()=>$('#photo-grid').classList.remove('is-over'));
+$('#photo-grid').addEventListener('drop',e=>{e.preventDefault();$('#photo-grid').classList.remove('is-over');uploadPhotos(e.dataTransfer?.files||[]);});
+$('#photo-grid').addEventListener('click',e=>{
+  const v=variants[vIndex],b=e.target.closest('button');if(!b)return;
+  if(b.dataset.photoRemove!==undefined)v.photos.splice(Number(b.dataset.photoRemove),1);
+  else if(b.dataset.photoCover!==undefined){const [x]=v.photos.splice(Number(b.dataset.photoCover),1);v.photos.unshift(x);}
+  else if(b.dataset.photoMove!==undefined){const i=Number(b.dataset.photoMove),j=i+Number(b.dataset.dir);if(j<0||j>=v.photos.length)return;[v.photos[i],v.photos[j]]=[v.photos[j],v.photos[i]];}
+  renderPhotos();renderTabs();preview();
 });
 form.addEventListener('submit',async event=>{
-  event.preventDefault();const data=formData(),message=$('#edit-message');
-  const missing=[!data.image&&'a foto principal',!data.name&&'o nome',!data.category&&'a categoria',!(data.priceCents>0)&&'o preço',!data.color&&'a cor',!data.description&&'a descrição'].filter(Boolean);
+  event.preventDefault();const d=formData(),message=$('#edit-message');
+  const missing=[!d.name&&'o nome',!d.category&&'a categoria',!(d.priceCents>0)&&'o preço',!d.description&&'a descrição'].filter(Boolean);
   if(missing.length){message.textContent='Falta preencher '+missing.join(', ')+'.';return;}
+  const bad=d.variants.findIndex(v=>!v.color||!v.photos.length);
+  if(bad>=0){loadVariant(bad);message.textContent=d.variants[bad].color?`Envie ao menos uma foto da cor ${d.variants[bad].color}.`:'Dê um nome a esta cor.';return;}
+  const names=d.variants.map(v=>v.color.toLocaleLowerCase('pt-BR'));if(new Set(names).size!==names.length){message.textContent='Há duas cores com o mesmo nome.';return;}
   $('#save-product').disabled=true;message.textContent='Salvando…';
+  const group=d.variants.length>1?(groupKey||newGroup()):'';
   try{
-    const oldGroup=editing?.colorGroup||presetGroup||'',group=colorSel.size?(oldGroup||products.find(x=>colorSel.has(x.id)&&x.colorGroup)?.colorGroup||newGroup()):'';
-    const {colors,...payload}=data;payload.colorGroup=group;
-    const saved=await api('/api/admin/products'+(editing?'/'+editing.id:''),{method:editing?'PUT':'POST',body:JSON.stringify(payload)});
-    // Atualiza as outras cores ligadas ou desligadas desta peça.
-    for(const x of products){if(x.id===saved.product.id)continue;const target=colorSel.has(x.id)?group:(oldGroup&&x.colorGroup===oldGroup?'':x.colorGroup||'');if((x.colorGroup||'')!==target)await api('/api/admin/products/'+x.id,{method:'PUT',body:JSON.stringify({...x,colorGroup:target,version:x.version||0})});}
-    snapshot=JSON.stringify(formData());presetGroup='';$('#edit-dialog').close();await refresh(true);toast(editing?'Peça atualizada. Já está na vitrine.':'Peça cadastrada. Já está na vitrine.');}
-  catch(error){message.textContent=error.message;}finally{$('#save-product').disabled=uploads>0;}
+    for(const [i,v] of d.variants.entries()){
+      if(d.variants.length>1)message.textContent=`Salvando cor ${i+1} de ${d.variants.length}…`;
+      const payload={name:d.name,category:d.category,priceCents:d.priceCents,description:d.description,material:d.material,care:d.care,measurements:d.measurements,featured:d.featured,active:d.active,look:d.look,sizeChart:d.sizeChart,color:v.color,hex:v.hex,image:v.photos[0],secondaryImage:v.photos[1]||'',extraImages:v.photos.slice(2),stock:v.stock,colorGroup:group,version:variants[i].version||0};
+      const r=await api('/api/admin/products'+(v.id?'/'+v.id:''),{method:v.id?'PUT':'POST',body:JSON.stringify(payload)});
+      variants[i].id=r.product.id;variants[i].version=r.product.version;
+    }
+    for(const id of removedIds)await api('/api/admin/products/'+id,{method:'DELETE',body:JSON.stringify({force:true})});
+    removedIds=[];snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);
+    toast(editing?'Peça atualizada. Já está na vitrine.':`Peça cadastrada${d.variants.length>1?` com ${d.variants.length} cores`:''}. Já está na vitrine.`);
+  }catch(error){message.textContent=error.message+' Atualize os dados e confira as cores antes de tentar de novo.';await refresh(true);}
+  finally{$('#save-product').disabled=uploads>0;}
 });
 
-/* ---------- Editor: medidas, cores e look ---------- */
-let lookSel=new Set(),colorSel=new Set(),chart={columns:['Busto','Cintura','Quadril'],rows:{}},presetGroup='';
-const newGroup=()=>'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+/* ---------- Editor: medidas e look ---------- */
 function renderChart(){
   $('#chart-editor').innerHTML=`<table><thead><tr><th>Tamanho</th>${chart.columns.map((c,i)=>`<th><span class="chart-col"><input value="${escapeHTML(c)}" maxlength="20" data-col="${i}" aria-label="Nome da medida ${i+1}"><button type="button" data-remove-col="${i}" aria-label="Remover medida">×</button></span></th>`).join('')}</tr></thead><tbody>${catalog.sizes.map(s=>`<tr><th>${escapeHTML(s)}</th>${chart.columns.map((c,i)=>`<td><input value="${escapeHTML(chart.rows[s]?.[i]||'')}" maxlength="12" inputmode="decimal" data-size="${escapeHTML(s)}" data-cell="${i}" aria-label="${escapeHTML(c)} do tamanho ${escapeHTML(s)}"></td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
@@ -166,44 +214,24 @@ function syncChart(){
 }
 function readChart(){
   if(!$('#chart-editor').querySelector('table'))return null;syncChart();
-  const cols=chart.columns.map(c=>c.trim()),keep=cols.map((c,i)=>Boolean(c));if(!keep.some(Boolean))return null;
+  const cols=chart.columns.map(c=>c.trim()),keep=cols.map(c=>Boolean(c));if(!keep.some(Boolean))return null;
   const rows={};for(const [s,values] of Object.entries(chart.rows)){const v=values.filter((_,i)=>keep[i]).map(x=>x.trim());if(v.some(Boolean))rows[s]=v;}
   return Object.keys(rows).length?{columns:cols.filter(Boolean),rows}:null;
 }
 function pickerItem(x,checked,kind){return `<label class="pick${checked?' is-on':''}"><input type="checkbox" data-pick="${kind}" value="${x.id}"${checked?' checked':''}><img src="${escapeHTML(x.image)}" alt="" loading="lazy"><span><b>${escapeHTML(x.name)}</b><small><i style="background:${escapeHTML(x.hex)}"></i>${escapeHTML(x.color)} · ${money(x.priceCents)}</small></span></label>`;}
 function renderPickers(){
-  const self=editing?.id,others=products.filter(x=>x.id!==self);
-  const q=$('#look-search').value.trim().toLocaleLowerCase('pt-BR');
-  $('#color-picker').innerHTML=others.length?others.filter(x=>colorSel.has(x.id)||!x.colorGroup||x.colorGroup!==editing?.colorGroup).sort((a,b)=>Number(colorSel.has(b.id))-Number(colorSel.has(a.id))).map(x=>pickerItem(x,colorSel.has(x.id),'color')).join(''):'<p class="field-note">Cadastre outras peças para ligar as cores.</p>';
+  const own=new Set(variants.map(v=>v.id).concat(editing?.id||[])),q=$('#look-search').value.trim().toLocaleLowerCase('pt-BR');
+  const others=products.filter(x=>!own.has(x.id)&&!(groupKey&&x.colorGroup===groupKey));
   $('#look-picker').innerHTML=others.filter(x=>lookSel.has(x.id)||[x.name,x.category,x.color].join(' ').toLocaleLowerCase('pt-BR').includes(q)).sort((a,b)=>Number(lookSel.has(b.id))-Number(lookSel.has(a.id))).slice(0,30).map(x=>pickerItem(x,lookSel.has(x.id),'look')).join('')||'<p class="field-note">Nenhuma peça encontrada.</p>';
-  $('#new-color').hidden=!editing;
-}
-function extrasOpen(p,preset){
-  lookSel=new Set((preset?.fields.look??p?.look)||[]);
-  const group=preset?.group||p?.colorGroup||'';presetGroup=preset?.group||'';
-  colorSel=new Set(group?products.filter(x=>x.colorGroup===group&&x.id!==p?.id).map(x=>x.id):[]);
-  const source=preset?.fields.sizeChart??p?.sizeChart;
-  chart=source?{columns:[...source.columns],rows:Object.fromEntries(Object.entries(source.rows).map(([k,v])=>[k,[...v]]))}:{columns:['Busto','Cintura','Quadril'],rows:{}};
-  $('#chart-copy').innerHTML='<option value="">Copiar tabela de outra peça…</option>'+products.filter(x=>x.sizeChart&&x.id!==p?.id).map(x=>`<option value="${x.id}">${escapeHTML(x.name)} · ${escapeHTML(x.color)}</option>`).join('');
-  $('#look-search').value='';renderChart();renderPickers();
 }
 $('#chart-editor').addEventListener('click',e=>{const b=e.target.closest('[data-remove-col]');if(!b)return;syncChart();const i=Number(b.dataset.removeCol);chart.columns.splice(i,1);for(const v of Object.values(chart.rows))v.splice(i,1);if(!chart.columns.length)chart.columns=['Medida'];renderChart();});
 $('#chart-add-col').addEventListener('click',()=>{syncChart();if(chart.columns.length>=6){toast('Use até 6 medidas.');return;}chart.columns.push('');for(const v of Object.values(chart.rows))v.push('');renderChart();$('#chart-editor').querySelector(`[data-col="${chart.columns.length-1}"]`).focus();});
 $('#chart-clear').addEventListener('click',()=>{chart={columns:['Busto','Cintura','Quadril'],rows:{}};renderChart();});
 $('#chart-copy').addEventListener('change',e=>{const x=products.find(p=>p.id===Number(e.target.value));if(x?.sizeChart){chart={columns:[...x.sizeChart.columns],rows:Object.fromEntries(Object.entries(x.sizeChart.rows).map(([k,v])=>[k,[...v]]))};renderChart();toast('Tabela copiada de '+x.name+'.');}e.target.value='';});
 $('#look-search').addEventListener('input',renderPickers);
-form.addEventListener('change',e=>{const t=e.target;if(!t.dataset?.pick)return;const set=t.dataset.pick==='look'?lookSel:colorSel,id=Number(t.value);
-  if(t.checked){if(set===lookSel&&lookSel.size>=6){t.checked=false;toast('O look aceita até 6 peças.');return;}set.add(id);}else set.delete(id);
+form.addEventListener('change',e=>{const t=e.target;if(t.dataset?.pick!=='look')return;const id=Number(t.value);
+  if(t.checked){if(lookSel.size>=6){t.checked=false;toast('O look aceita até 6 peças.');return;}lookSel.add(id);}else lookSel.delete(id);
   t.closest('.pick').classList.toggle('is-on',t.checked);});
-$('#new-color').addEventListener('click',async()=>{
-  if(!editing)return;if(JSON.stringify(formData())!==snapshot){toast('Salve esta peça antes de criar outra cor.');return;}
-  let group=editing.colorGroup;
-  try{if(!group){group=newGroup();await api('/api/admin/products/'+editing.id,{method:'PUT',body:JSON.stringify({...editing,colorGroup:group,version:editing.version||0})});await refresh(true);}
-  const base=products.find(x=>x.id===editing.id)||editing;
-  openEditor(null,{group,fields:{name:base.name,category:base.category,price:(base.priceCents/100).toFixed(2),description:base.description,material:base.material||'',care:base.care||'',measurements:base.measurements||'',look:base.look||[],sizeChart:base.sizeChart||null}});
-  $('#edit-title').textContent='Nova cor · '+base.name;form.elements.color.value='';form.elements.color.focus();toast('Escolha a cor, as fotos e o estoque desta nova cor.');}
-  catch(error){toast(error.message);}
-});
 
 /* ---------- Clientes: avise-me e lista de e-mails ---------- */
 const back=a=>{const p=products.find(x=>x.id===a.productId);return Boolean(p&&p.active&&p.stock[a.size]>0);};
@@ -400,9 +428,10 @@ $('#manager-dialog').addEventListener('change',async event=>{
 $('#manager-search').addEventListener('input',renderManager);
 document.addEventListener('maevi:admin-ready',renderManager);
 $('#delete-product').addEventListener('click',async()=>{
-  if(!editing)return;const busy=orders.some(o=>OPEN_ORDER.includes(o.status)&&o.items.some(i=>i.id===editing.id));if(!await confirmBox(`Excluir ${editing.name}?`,'A peça sai da vitrine e do painel. Esta ação não pode ser desfeita.'+(busy?' Ela está em pedido em andamento: o pedido continua registrado com o nome e o preço.':'')))return;
-  try{await api('/api/admin/products/'+editing.id,{method:'DELETE',body:JSON.stringify({force:true})});snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);renderManager();toast('Peça excluída.');}
-  catch(error){$('#edit-message').textContent=error.message;}
+  if(!editing)return;const ids=variants.map(v=>v.id).filter(Boolean).concat(removedIds),busy=orders.some(o=>OPEN_ORDER.includes(o.status)&&o.items.some(i=>ids.includes(i.id)));
+  if(!await confirmBox(`Excluir ${editing.name}${ids.length>1?` e as ${ids.length} cores`:''}?`,'A peça sai da vitrine e do painel, com as fotos. Esta ação não pode ser desfeita.'+(busy?' Ela está em pedido em andamento: o pedido continua registrado com o nome e o preço.':'')))return;
+  try{for(const id of ids)await api('/api/admin/products/'+id,{method:'DELETE',body:JSON.stringify({force:true})});snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);renderManager();toast('Peça excluída.');}
+  catch(error){$('#edit-message').textContent=error.message;await refresh(true);}
 });
 window.MaeviAdmin=Object.freeze({api,money,escapeHTML,refresh,toast});
 (async()=>{if(await refresh(true)){let tab='catalog';try{tab=sessionStorage.getItem('maevi-admin-tab')||tab;}catch{}showTab(tab);}else loggedIn(false);})();

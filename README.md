@@ -54,7 +54,7 @@ Conferem estoque, pedidos, pagamentos, estornos, login, segurança e painel com 
 
 - **Compre o look:** no editor da peça, escolha até 6 peças que combinam com ela. Elas aparecem no fim da ficha.
 - **Tabela de medidas:** medidas por tamanho, em centímetros, com colunas que você define (ex.: busto, cintura, quadril). Dá para copiar a tabela de outra peça.
-- **Outras cores:** ligue peças da mesma modelagem ou use **Criar outra cor desta peça**. A vitrine mostra um card só com as cores, e a cliente troca de cor na ficha. Cada cor tem estoque e fotos próprios.
+- **Cores e fotos:** no editor da peça, a seção **Cores, fotos e estoque** tem uma aba por cor (+ Adicionar cor). Cada cor tem nome, bolinha, até 8 fotos (envio de várias de uma vez, troca de capa e ordem) e estoque por tamanho. Nome, preço, descrição, medidas e look valem para todas. Uma peça já cadastrada separadamente pode virar cor de outra em **Junte aqui**. Por baixo, cada cor é guardada como uma peça ligada às outras, por isso sacola, pedidos e estornos não mudam. A vitrine e o painel mostram um card só por peça.
 - **Avise-me quando chegar:** em peças ou tamanhos esgotados, a cliente deixa e-mail ou WhatsApp (com autorização). Os pedidos aparecem em **Clientes**, com botões prontos de WhatsApp e e-mail, e um aviso no painel quando a peça volta ao estoque.
 - **Pop-up de boas-vindas:** em **Loja**, ligue o pop-up e escolha um cupom (de preferência marcado como **Só na primeira compra**, que vale uma vez por e-mail). Os e-mails cadastrados ficam em **Clientes**, onde dá para copiar ou baixar a planilha.
 - **WhatsApp flutuante:** botão fixo no canto da vitrine, com o número cadastrado em Loja.
