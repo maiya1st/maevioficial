@@ -476,3 +476,8 @@ td button{border:1px solid var(--line);padding:8px 14px;border-radius:999px}
 .photo-tools button{min-width:28px;height:28px;padding:0 6px;font-size:12px}
 .photo-remove-x{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;background:#faf8f4ee;color:var(--alert);font-size:18px;line-height:1;box-shadow:0 2px 8px #0003}
 .cover-tag{left:6px;top:6px}
+
+/* O editor e o pop-up nunca rolam como um todo: só a área interna rola.
+   Sem isso, ao fechar o seletor de fotos o navegador empurrava o conteúdo para fora da janela. */
+.editor-dialog,.manager-dialog{overflow:clip}
+#photo-input{position:fixed!important;top:0;left:0}

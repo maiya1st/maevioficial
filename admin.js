@@ -117,6 +117,7 @@ function loadVariant(i){
   syncVariant();vIndex=i;const v=variants[i];
   $('#v-color').value=v.color;$('#v-hex').value=/^#[0-9a-f]{6}$/i.test(v.hex)?v.hex:'#303521';$('#hex-label').textContent=$('#v-hex').value;
   stockInputs(v.stock);renderPhotos();renderTabs();preview();
+  $('#photo-note').textContent=v.photos.length?`${v.photos.length} foto${v.photos.length===1?'':'s'} nesta cor. A primeira é a capa.`:'Até 8 fotos. Pode mandar direto da galeria do celular: o painel reduz o tamanho antes de enviar. A primeira é a capa.';
 }
 function formData(){
   syncVariant();const f=new FormData(form),ids=new Set(variants.map(v=>v.id).filter(Boolean));
@@ -192,7 +193,8 @@ async function uploadPhotos(files){
   }
   finally{uploads--;$('#photo-grid').classList.remove('is-uploading');$('#save-product').disabled=uploads>0;renderTabs();preview();}
 }
-$('#photo-input').addEventListener('change',e=>{uploadPhotos(e.target.files);e.target.value='';});
+$('#photo-input').addEventListener('change',e=>{$('#edit-dialog').scrollTop=0;uploadPhotos(e.target.files);e.target.value='';});
+for(const id of ['edit-dialog','manager-dialog'])$('#'+id).addEventListener('scroll',e=>{if(e.target.scrollTop)e.target.scrollTop=0;});
 $('#photo-grid').addEventListener('dragover',e=>{e.preventDefault();$('#photo-grid').classList.add('is-over');});
 $('#photo-grid').addEventListener('dragleave',()=>$('#photo-grid').classList.remove('is-over'));
 $('#photo-grid').addEventListener('drop',e=>{e.preventDefault();$('#photo-grid').classList.remove('is-over');uploadPhotos(e.dataTransfer?.files||[]);});
