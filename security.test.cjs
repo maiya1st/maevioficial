@@ -106,7 +106,7 @@ test('revisão de segurança local',async t=>{
   });
   await t.test('servidor define limites de cabeçalhos, tempo, conexões e keepalive',()=>{
     const server=createLocalServer(()=>{});
-    assert.equal(server.maxHeaderSize,8192);assert.equal(server.headersTimeout,10000);assert.equal(server.requestTimeout,15000);
+    assert.equal(server.maxHeaderSize,8192);assert.equal(server.headersTimeout,10000);assert.equal(server.requestTimeout,60000,'envio de fotos em internet móvel');
     assert.equal(server.keepAliveTimeout,5000);assert.equal(server.maxHeadersCount,50);assert.equal(server.maxRequestsPerSocket,100);assert.equal(server.maxConnections,32);assert.equal(server.timeout,15000);
     server.close();
   });
