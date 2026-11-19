@@ -7,6 +7,8 @@ const commerce=require('./commerce.cjs');
 const {createGateway}=require('./payments.cjs');
 const images=require('./images.cjs');
 const aiCatalog=require('./ai-catalog.cjs');
+// Safeguard for shared-hosting databases: keep a finite upload quota.
+const MAX_STORED_IMAGES=1000, MAX_STORED_IMAGE_BYTES=250*1024*1024;
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const same = (a,b) => crypto.timingSafeEqual(Buffer.from(hash(a)),Buffer.from(hash(b)));
 function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(__dirname,'assets'), adminKey, port=5173, now=Date.now, network=fetch, paymentEnv={}, paymentNetwork=network, seedProducts=[], mysql, publicOrigin='', publicAdmin=false, databaseImages=!!mysql, aiEnv=process.env }={}) {
@@ -356,11 +358,11 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             const bytes=Buffer.concat(chunks),info=images.inspect(bytes,type);
             if(databaseImages){
               const name=`upload-${crypto.randomBytes(12).toString('hex')}.${info.extension}`;
-              await transaction(async()=>{const usage=await db.prepare('SELECT COUNT(*) AS count,COALESCE(SUM(bytes),0) AS total FROM images').get();if(Number(usage.count)>=400||Number(usage.total)+bytes.length>104857600)fail(409,'Limite de fotos atingido (100 MB ou 400 arquivos).');await db.prepare('INSERT INTO images(name,type,bytes,data) VALUES(?,?,?,?)').run(name,type,bytes.length,bytes);await record('uploaded','image',name);});
+              await transaction(async()=>{const usage=await db.prepare('SELECT COUNT(*) AS count,COALESCE(SUM(bytes),0) AS total FROM images').get();if(Number(usage.count)>=MAX_STORED_IMAGES||Number(usage.total)+bytes.length>MAX_STORED_IMAGE_BYTES)fail(409,'Limite de fotos atingido (250 MB ou 1.000 arquivos). Entre em contato para otimizar o armazenamento.');await db.prepare('INSERT INTO images(name,type,bytes,data) VALUES(?,?,?,?)').run(name,type,bytes.length,bytes);await record('uploaded','image',name);});
               return send(res,201,{image:'/assets/'+name,width:info.width,height:info.height});
             }
             const directory=assetDir;const files=fs.readdirSync(directory).filter(name=>/^upload-[a-f0-9]+\.(jpg|png|webp)$/.test(name));
-            if(files.length>=400||files.reduce((sum,name)=>sum+fs.statSync(path.join(directory,name)).size,0)+bytes.length>104857600)fail(409,'Limite local de fotos atingido (100 MB ou 400 arquivos).');
+            if(files.length>=MAX_STORED_IMAGES||files.reduce((sum,name)=>sum+fs.statSync(path.join(directory,name)).size,0)+bytes.length>MAX_STORED_IMAGE_BYTES)fail(409,'Limite local de fotos atingido (250 MB ou 1.000 arquivos).');
             const name=`upload-${crypto.randomBytes(12).toString('hex')}.${info.extension}`;
             fs.writeFileSync(path.join(directory,name),bytes,{flag:'wx'});(await record('uploaded','image',name));return send(res,201,{image:'/assets/'+name,width:info.width,height:info.height});
           }
@@ -413,7 +415,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             const input=await body(req);const p=(await transaction(async()=>{const id=Number((await db.prepare('SELECT COALESCE(MAX(id),0)+1 AS id FROM products').get()).id);const value=validateProduct(input,id,(await getCatalog()));(await saveProduct(value));(await record('created','product',id));return value;}));return send(res,201,{product:p});
           }
           if(/^\/api\/admin\/products\/\d+$/.test(route)&&req.method==='PUT'){
-            const id=Number(route.split('/').pop()),input=await body(req);const p=(await transaction(async()=>{const current=(await getProduct(id));if(!current)fail(404,'Peça não encontrada.');if(input.version!==(current.version||0))fail(409,'Esta peça mudou desde a abertura. Feche a edição, atualize os dados e tente novamente.');const value=validateProduct(input,id,(await getCatalog()));value.version=current.version||0;(await saveProduct(value));(await record('updated','product',id));return value;}));return send(res,200,{product:p});
+            const id=Number(route.split('/').pop()),input=await body(req);const p=(await transaction(async()=>{const current=(await getProduct(id));if(!current)fail(404,'Peça não encontrada.');if(input.version!==(current.version||0))fail(409,'Esta peça mudou desde a abertura. Feche a edição, atualize os dados e tente novamente.');const value=validateProduct(input,id,(await getCatalog()));value.version=current.version||0;(await saveProduct(value));await removeUnusedImages([current.image,current.secondaryImage,...(current.extraImages||[])]);(await record('updated','product',id));return value;}));return send(res,200,{product:p});
           }
           if(/^\/api\/admin\/products\/\d+$/.test(route)&&req.method==='DELETE'){
             const id=Number(route.split('/').pop()),force=(await body(req)).force===true;
