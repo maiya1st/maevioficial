@@ -51,3 +51,13 @@ test('falhas do provedor e resposta malformada são tratadas sem expor dados da 
     suggest({notes:'vestido'}, {...args,network:async()=>({ok:true,json:async()=>({choices:[]})})}),
     error=>error.status===502&&!error.message.includes('private-test-secret'));
 });
+
+test('status de IA indica disponibilidade sem revelar chave',async t=>{
+  const f=fixture(t,{aiEnv:{MAEVI_OPENAI_API_KEY:'confidential-test-key'}});
+  assert.equal((await f.request('/api/admin/ai-catalog')).status,401);
+  const cookie=await f.login();
+  const result=await f.request('/api/admin/ai-catalog',{headers:{cookie}});
+  assert.equal(result.status,200);
+  assert.deepEqual(result.data,{configured:true});
+  assert.ok(!JSON.stringify(result.data).includes('confidential-test-key'));
+});
