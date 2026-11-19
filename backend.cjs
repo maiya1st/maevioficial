@@ -398,6 +398,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
               const value={categories:next.categories,sizes:next.sizes,version:current.version+1};await putSetting('catalog',value);await record('updated','catalog','catalog');return value;
             });return send(res,200,{catalog});
           }
+          if(route==='/api/admin/ai-catalog'&&req.method==='GET')return send(res,200,{configured:Boolean(aiEnv.MAEVI_OPENAI_API_KEY)});
           if(route==='/api/admin/ai-catalog'&&req.method==='POST'){
             rate(req,'ai-catalog',6);
             const input=await body(req,190000);
