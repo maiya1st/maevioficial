@@ -8,9 +8,9 @@
   "scripts": {
     "dev": "node server.cjs",
     "start": "node server.cjs",
-    "test": "node --test ai-catalog.test.cjs backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs payments.test.cjs hosting.test.cjs startup.test.cjs owner.test.cjs manage.test.cjs features.test.cjs",
+    "test": "node --test image-storage.test.cjs ai-catalog.test.cjs backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs payments.test.cjs hosting.test.cjs startup.test.cjs owner.test.cjs manage.test.cjs features.test.cjs",
     "test:http": "node --test http.test.cjs",
-    "test:all": "node --test ai-catalog.test.cjs backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs startup.test.cjs owner.test.cjs manage.test.cjs features.test.cjs",
+    "test:all": "node --test image-storage.test.cjs ai-catalog.test.cjs backend.test.cjs security.test.cjs catalog.test.cjs commerce.test.cjs http.test.cjs payments.test.cjs hosting.test.cjs startup.test.cjs owner.test.cjs manage.test.cjs features.test.cjs",
     "backup": "node backup.cjs",
     "check": "node --check ai-catalog.cjs && node --check app.js && node --check admin.js && node --check backend.cjs && node --check server.cjs && node --check catalog-core.js && node --check experience.js && node --check immersive.js && node --check checkout.js && node --check operations.js && node --check commerce.cjs && node --check images.cjs && node --check payments.cjs && node --check backup.cjs && node --check contacts.js && node --check database.cjs && node --check hosting.cjs && node --check prepare-hostinger.cjs && node --check http-server.cjs",
     "test:mysql": "node --test mysql.test.cjs"
