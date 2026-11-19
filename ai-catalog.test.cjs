@@ -33,3 +33,21 @@ test('rota de IA exige login e não altera o catálogo nem estoque',async t=>{
   assert.deepEqual((await f.request('/api/admin/products',{headers:{cookie}})).data.products,before);
   assert.deepEqual(requests,['https://api.openai.com/v1/chat/completions']);
 });
+
+test('IA indisponível não gera rascunho sem chave e não modifica catálogo',async t=>{
+  const f=fixture(t,{aiEnv:{}});
+  const cookie=await f.login();
+  const before=(await f.request('/api/admin/products',{headers:{cookie}})).data.products;
+  const result=await f.post('/api/admin/ai-catalog',{notes:'blusa de manga longa',category:'Vestidos'},{cookie});
+  assert.equal(result.status,503);
+  assert.deepEqual((await f.request('/api/admin/products',{headers:{cookie}})).data.products,before);
+});
+test('falhas do provedor e resposta malformada são tratadas sem expor dados da API',async()=>{
+  const args={apiKey:'private-test-secret',categories};
+  await assert.rejects(
+    suggest({notes:'vestido'}, {...args,network:async()=>({ok:false,status:429})}),
+    error=>error.status===502&&!error.message.includes('private-test-secret'));
+  await assert.rejects(
+    suggest({notes:'vestido'}, {...args,network:async()=>({ok:true,json:async()=>({choices:[]})})}),
+    error=>error.status===502&&!error.message.includes('private-test-secret'));
+});
