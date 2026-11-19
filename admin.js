@@ -9,7 +9,7 @@ const nextFor=o=>next[o.status]||[];
 function actionLabel(o,s){if(s!=='demo_cancelled')return o.status==='demo_payment_review'&&s==='demo_preparing'?'Conferido: está pago':label(s);if(o.status==='demo_payment_review')return 'Cancelar (conferido no Mercado Pago)';return paidOrder(o)?'Cancelar e estornar':('Cancelar e devolver estoque');}
 const TITLES={catalog:'Peças',orders:'Pedidos',structure:'Categorias e tamanhos',settings:'Loja',coupons:'Cupons',customers:'Clientes',account:'Minha conta'};
 const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
-let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer;
+let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer,aiConfigured=false;
 const sum=stock=>Object.values(stock||{}).reduce((a,b)=>a+b,0);
 
 function toast(message){const t=$('#admin-toast');t.textContent=message;t.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('visible'),3800);}
@@ -26,9 +26,9 @@ async function api(url,options={}){
 async function refresh(silent=false){
   $('#refresh').disabled=true;const epoch=authEpoch;
   try{
-    const [list,purchases,events,structure,me,settings,waiting,emails]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers')]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
+    const [list,purchases,events,structure,me,settings,waiting,emails,aiStatus]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers'),api('/api/admin/ai-catalog').catch(()=>({configured:false}))]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
     if(epoch!==authEpoch)return false;
-    products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;account=me.account;sessionMethod=me.session.method;
+    products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;aiConfigured=Boolean(aiStatus.configured);$('#ai-generate').disabled=!aiConfigured;account=me.account;sessionMethod=me.session.method;
     loggedIn(true);render();renderStructure();renderAccount();renderCustomers();document.dispatchEvent(new Event('maevi:admin-ready'));
     if(!silent)toast('Dados atualizados.');return true;
   }catch(error){if(!silent&&!$('#dashboard').hidden)$('#dashboard-message').textContent=error.message;return false;}
@@ -128,7 +128,7 @@ function preview(){
   $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${v.photos[0]?`<img src="${escapeHTML(v.photos[0])}" alt="">`:'<span>A capa desta cor aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color">${d.variants.length>1?d.variants.map(x=>`<i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(x.hex)?x.hex:'#303521')}"></i>`).join('')+d.variants.length+' cores':`<i style="background:${escapeHTML(v.hex||'#303521')}"></i>${escapeHTML(v.color||'Cor')}`}</p><p class="preview-sizes">${catalog.sizes.map(s=>`<span class="${v.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${v.photos.length>1?`<p class="preview-hidden" style="color:var(--muted)">${v.photos.length} fotos nesta cor</p>`:''}${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
 }
 function openEditor(p){
-  editing=p||null;form.reset();$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
+  aiRequestVersion++;editing=p||null;form.reset();aiDraft=null;$('#ai-notes').value='';$('#ai-generate').disabled=!aiConfigured;$('#ai-message').textContent=aiConfigured?'':'Assistente de IA não configurado. O cadastro manual continua disponível.';$('#ai-review').hidden=true;$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
   $('#product-category').innerHTML=catalog.categories.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
   const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:{category:catalog.categories[0]||''};
   for(const name of ['name','category','price','description','material','care','measurements']){const input=form.elements.namedItem(name);if(input&&v[name]!==undefined)input.value=v[name];}
@@ -143,7 +143,48 @@ function openEditor(p){
   if(variants.length>1)$('#edit-title').textContent=`Editar peça · ${variants.length} cores`;
   snapshot=JSON.stringify(formData());$('#edit-dialog').showModal();form.elements.name.focus();
 }
-function closeEditor(){if(JSON.stringify(formData())!==snapshot&&!confirm('Sair sem salvar as alterações desta peça?'))return;$('#edit-dialog').close();}
+function closeEditor(){if(JSON.stringify(formData())!==snapshot&&!confirm('Sair sem salvar as alterações desta peça?'))return;aiRequestVersion++;$('#edit-dialog').close();}
+// Draft assistant: never saves or publishes a product.
+let aiDraft=null,aiRequestVersion=0;
+async function aiImagePreview(){
+  const src=variants[vIndex]?.photos[0];if(!src)return null;
+  const image=new Image();image.decoding='async';image.src=src;
+  try{await image.decode();}catch{return null;}
+  const canvas=document.createElement('canvas'),scale=Math.min(1,320/Math.max(image.naturalWidth,image.naturalHeight));
+  canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+  canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+  return canvas.toDataURL('image/jpeg',.55);
+}
+$('#ai-generate').addEventListener('click',async()=>{
+  const button=$('#ai-generate'),message=$('#ai-message');
+  if(uploads){message.textContent='Espere as fotos terminarem de carregar.';return;}
+  const requestVersion=++aiRequestVersion;
+  if(!aiConfigured){message.textContent='Assistente de IA não configurado. O cadastro manual continua disponível.';return;}
+  button.disabled=true;message.textContent='Preparando sugestão…';$('#ai-review').hidden=true;aiDraft=null;
+  try{
+    let image=null;try{image=await aiImagePreview();}catch{message.textContent='A foto não pôde ser analisada; usaremos apenas os detalhes informados.';}
+    const notes=$('#ai-notes').value.trim();
+    if(!image&&!notes){message.textContent='Adicione uma foto ou descreva a peça antes de gerar.';return;}
+    message.textContent='Analisando informações e preparando descrição…';
+    const result=await api('/api/admin/ai-catalog',{method:'POST',body:JSON.stringify({notes,image,category:form.elements.category.value}),timeout:35000});
+    if(requestVersion!==aiRequestVersion||!$('#edit-dialog').open)return;
+    aiDraft=result.draft;
+    $('#ai-suggested-name').textContent=aiDraft.name;
+    $('#ai-suggested-description').textContent=aiDraft.description;
+    $('#ai-suggested-category').textContent=aiDraft.category||'Conferir manualmente';
+    $('#ai-observations').textContent=aiDraft.observations?'Verificar: '+aiDraft.observations:'';
+    $('#ai-review').hidden=false;message.textContent='Sugestão pronta para sua conferência.';
+  }catch(error){if(requestVersion===aiRequestVersion&&$('#edit-dialog').open)message.textContent=error.message;}
+  finally{if(requestVersion===aiRequestVersion)button.disabled=!aiConfigured;}
+});
+$('#ai-apply').addEventListener('click',()=>{
+  if(!aiDraft)return;
+  form.elements.name.value=aiDraft.name;
+  form.elements.description.value=aiDraft.description;
+  if(aiDraft.category&&catalog.categories.includes(aiDraft.category))form.elements.category.value=aiDraft.category;
+  if(!editing)form.elements.active.checked=false; // AI-assisted new pieces stay hidden until explicitly published.
+  preview();$('#ai-message').textContent='Textos aplicados. Produto novo ficará oculto até você autorizar a publicação. Confira preço, cor, tamanhos e estoque antes de salvar.';
+});
 $('#new-product').addEventListener('click',()=>openEditor(null));
 $('#close-edit').addEventListener('click',closeEditor);$('#cancel-edit').addEventListener('click',closeEditor);
 $('#edit-dialog').addEventListener('cancel',event=>{event.preventDefault();closeEditor();});
@@ -223,7 +264,7 @@ form.addEventListener('submit',async event=>{
     }
     for(const id of removedIds)await api('/api/admin/products/'+id,{method:'DELETE',body:JSON.stringify({force:true})});
     removedIds=[];snapshot=JSON.stringify(formData());$('#edit-dialog').close();await refresh(true);
-    toast(editing?'Peça atualizada. Já está na vitrine.':`Peça cadastrada${d.variants.length>1?` com ${d.variants.length} cores`:''}. Já está na vitrine.`);
+    toast(`${editing?'Peça atualizada':'Peça cadastrada'+(d.variants.length>1?' com '+d.variants.length+' cores':'')}. ${d.active?'Visível na vitrine.':'Oculta da vitrine.'}`);
   }catch(error){message.textContent=error.message+' Atualize os dados e confira as cores antes de tentar de novo.';await refresh(true);}
   finally{$('#save-product').disabled=uploads>0;}
 });

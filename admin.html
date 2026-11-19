@@ -88,6 +88,13 @@
         <section class="editor-section"><h3>Informações</h3>
           <label>Nome da peça<input name="name" maxlength="100" required placeholder="Ex.: Blazer Alfaiataria Areia"></label>
           <div class="form-row"><label>Categoria<select name="category" id="product-category" required></select></label><label>Preço (R$)<input name="price" type="number" inputmode="decimal" step="0.01" min="0.01" max="100000" required placeholder="0,00"></label></div>
+          <div class="ai-catalog" id="ai-catalog">
+            <div class="ai-catalog-head"><div><span class="ai-tag">MAÉVI AI CATALOG</span><h4>Cadastro assistido por IA</h4></div><button type="button" class="button outline small" id="ai-generate">✦ Sugerir textos</button></div>
+            <p class="field-note">Adicione uma foto da peça na seção abaixo e descreva o que sabe. A IA sugere nome, descrição e categoria. Nada é publicado automaticamente.</p>
+            <label>Informações da etiqueta e detalhes confirmados<textarea id="ai-notes" rows="2" maxlength="1200" placeholder="Ex.: vestido midi, manga curta, tecido 100% viscose conforme etiqueta; forro... NÃO inclua informações desconhecidas."></textarea></label>
+            <p id="ai-message" role="status" aria-live="polite"></p>
+            <div id="ai-review" hidden><p class="ai-reminder">Revise as sugestões. A composição, o preço e o estoque continuam sob seu controle.</p><p><strong>Nome sugerido:</strong> <span id="ai-suggested-name"></span></p><p><strong>Categoria:</strong> <span id="ai-suggested-category"></span></p><p><strong>Descrição:</strong> <span id="ai-suggested-description"></span></p><p id="ai-observations"></p><button type="button" class="button small" id="ai-apply">Aplicar sugestões ao formulário</button></div>
+          </div>
           <label>Descrição<textarea name="description" rows="4" maxlength="2000" required placeholder="Como a peça veste, para quais ocasiões, detalhes do acabamento"></textarea></label>
         </section>
         <section class="editor-section variants"><h3>Cores, fotos e estoque</h3><p class="field-note">Cada cor tem as próprias fotos e o próprio estoque. Nome, preço, descrição, medidas e look valem para todas as cores.</p>

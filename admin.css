@@ -481,3 +481,17 @@ td button{border:1px solid var(--line);padding:8px 14px;border-radius:999px}
    Sem isso, ao fechar o seletor de fotos o navegador empurrava o conteúdo para fora da janela. */
 .editor-dialog,.manager-dialog{overflow:clip}
 #photo-input{position:fixed!important;top:0;left:0}
+
+/* MAÉVI AI Catalog: suggestions remain drafts until the owner saves. */
+.ai-catalog{border:1px solid #d9ccbd;background:linear-gradient(125deg,#faf8f4,#f3eee6);border-radius:10px;padding:18px;margin:14px 0 18px}
+.ai-catalog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.ai-catalog-head h4{font:400 28px 'Cormorant Garamond',Georgia,serif;color:#303521;margin:3px 0 0}
+.ai-tag{font:700 10px Manrope,sans-serif;letter-spacing:.16em;color:#8e6e54}
+.ai-catalog .field-note{margin:10px 0 14px}
+.ai-catalog label{margin:0 0 8px}
+.ai-catalog #ai-message:not(:empty){font-size:13px;margin:10px 0;color:#303521}
+.ai-catalog #ai-review{margin-top:14px;border-top:1px solid #dddcd2;padding-top:12px;font-size:13px}
+.ai-catalog #ai-review p{margin:8px 0;overflow-wrap:anywhere}
+.ai-catalog #ai-suggested-description{white-space:pre-line}
+.ai-reminder{color:#795b3b}
+.ai-catalog .button:disabled{opacity:.55;cursor:wait}

@@ -6,9 +6,10 @@ const {Problem,fail}=require('./errors.cjs');
 const commerce=require('./commerce.cjs');
 const {createGateway}=require('./payments.cjs');
 const images=require('./images.cjs');
+const aiCatalog=require('./ai-catalog.cjs');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const same = (a,b) => crypto.timingSafeEqual(Buffer.from(hash(a)),Buffer.from(hash(b)));
-function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(__dirname,'assets'), adminKey, port=5173, now=Date.now, network=fetch, paymentEnv={}, paymentNetwork=network, seedProducts=[], mysql, publicOrigin='', publicAdmin=false, databaseImages=!!mysql }={}) {
+function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(__dirname,'assets'), adminKey, port=5173, now=Date.now, network=fetch, paymentEnv={}, paymentNetwork=network, seedProducts=[], mysql, publicOrigin='', publicAdmin=false, databaseImages=!!mysql, aiEnv=process.env }={}) {
   const payments=createGateway({env:paymentEnv,network:paymentNetwork,now});
   if(publicOrigin){const u=new URL(publicOrigin);if(u.protocol!=='https:'||u.origin!==publicOrigin||u.username||u.password||u.port||!u.hostname.includes('.')||/^(localhost|127\.|\[|\d+\.)/i.test(u.hostname))throw Error('Informe a origem HTTPS pública sem caminho ou barra final.');}
   if(publicAdmin&&(!publicOrigin||typeof adminKey!=='string'||!/^[a-f0-9]{48}$/.test(adminKey)))throw Error('O painel online exige origem HTTPS e chave administrativa de 48 caracteres hexadecimais.');
@@ -154,12 +155,12 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
     const store=(await getSettings()),delivery=commerce.shipping(shippingInput,store,subtotalCents-discountCents);
     return {items:lines,subtotalCents,discountCents,coupon:applied,shippingCents:delivery.priceCents,totalCents:subtotalCents-discountCents+delivery.priceCents,shipping:delivery,fulfillment:delivery.method==='pickup'?'demo_pickup':'demo_delivery',mode:'live',settingsVersion:store.version};
   }
-  async function body(req){
+  async function body(req,maxBytes=32768){
     if(!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type']||''))fail(415,'Envie JSON UTF-8.');
     if(req.headers['content-encoding']&&req.headers['content-encoding']!=='identity')fail(415,'Conteúdo comprimido não é aceito.');
-    if(req.headers['content-length']&&(!/^\d+$/.test(req.headers['content-length'])||Number(req.headers['content-length'])>32768))fail(413,'Conteúdo muito grande.');
+    if(req.headers['content-length']&&(!/^\d+$/.test(req.headers['content-length'])||Number(req.headers['content-length'])>maxBytes))fail(413,'Conteúdo muito grande.');
     let size=0, chunks=[];
-    for await(const chunk of req){size+=Buffer.byteLength(chunk);if(size>32768)fail(413,'Conteúdo muito grande.');chunks.push(Buffer.from(chunk));}
+    for await(const chunk of req){size+=Buffer.byteLength(chunk);if(size>maxBytes)fail(413,'Conteúdo muito grande.');chunks.push(Buffer.from(chunk));}
     try{const input=JSON.parse(Buffer.concat(chunks).toString());if(!input||Array.isArray(input)||typeof input!=='object')fail(400,'JSON inválido.');return input;}catch{fail(400,'JSON inválido.');}
   }
   const send=(res,status,data,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...headers});res.end(JSON.stringify(data));};
@@ -396,6 +397,16 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
               for(const p of changed)await saveProduct(p);
               const value={categories:next.categories,sizes:next.sizes,version:current.version+1};await putSetting('catalog',value);await record('updated','catalog','catalog');return value;
             });return send(res,200,{catalog});
+          }
+          if(route==='/api/admin/ai-catalog'&&req.method==='GET')return send(res,200,{configured:Boolean(aiEnv.MAEVI_OPENAI_API_KEY)});
+          if(route==='/api/admin/ai-catalog'&&req.method==='POST'){
+            rate(req,'ai-catalog',6);
+            const input=await body(req,190000);
+            const categories=(await getCatalog()).categories;
+            let draft;
+            try{draft=await aiCatalog.suggest(input,{apiKey:aiEnv.MAEVI_OPENAI_API_KEY,model:aiEnv.MAEVI_OPENAI_MODEL||undefined,network,categories});}
+            catch(error){fail(error.status||400,error.message||'Não foi possível gerar o rascunho.');}
+            return send(res,200,{draft});
           }
           if(route==='/api/admin/products'&&req.method==='GET')return send(res,200,{products:(await allProducts())});
           if(route==='/api/admin/products'&&req.method==='POST'){
