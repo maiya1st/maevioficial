@@ -9,7 +9,7 @@ const nextFor=o=>next[o.status]||[];
 function actionLabel(o,s){if(s!=='demo_cancelled')return o.status==='demo_payment_review'&&s==='demo_preparing'?'Conferido: está pago':label(s);if(o.status==='demo_payment_review')return 'Cancelar (conferido no Mercado Pago)';return paidOrder(o)?'Cancelar e estornar':('Cancelar e devolver estoque');}
 const TITLES={catalog:'Peças',orders:'Pedidos',structure:'Categorias e tamanhos',settings:'Loja',coupons:'Cupons',customers:'Clientes',account:'Minha conta'};
 const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
-let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer;
+let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer,aiConfigured=false;
 const sum=stock=>Object.values(stock||{}).reduce((a,b)=>a+b,0);
 
 function toast(message){const t=$('#admin-toast');t.textContent=message;t.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('visible'),3800);}
@@ -26,9 +26,9 @@ async function api(url,options={}){
 async function refresh(silent=false){
   $('#refresh').disabled=true;const epoch=authEpoch;
   try{
-    const [list,purchases,events,structure,me,settings,waiting,emails]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers')]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
+    const [list,purchases,events,structure,me,settings,waiting,emails,aiStatus]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers'),api('/api/admin/ai-catalog').catch(()=>({configured:false}))]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
     if(epoch!==authEpoch)return false;
-    products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;account=me.account;sessionMethod=me.session.method;
+    products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;aiConfigured=Boolean(aiStatus.configured);$('#ai-generate').disabled=!aiConfigured;account=me.account;sessionMethod=me.session.method;
     loggedIn(true);render();renderStructure();renderAccount();renderCustomers();document.dispatchEvent(new Event('maevi:admin-ready'));
     if(!silent)toast('Dados atualizados.');return true;
   }catch(error){if(!silent&&!$('#dashboard').hidden)$('#dashboard-message').textContent=error.message;return false;}
@@ -128,7 +128,7 @@ function preview(){
   $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${v.photos[0]?`<img src="${escapeHTML(v.photos[0])}" alt="">`:'<span>A capa desta cor aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color">${d.variants.length>1?d.variants.map(x=>`<i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(x.hex)?x.hex:'#303521')}"></i>`).join('')+d.variants.length+' cores':`<i style="background:${escapeHTML(v.hex||'#303521')}"></i>${escapeHTML(v.color||'Cor')}`}</p><p class="preview-sizes">${catalog.sizes.map(s=>`<span class="${v.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${v.photos.length>1?`<p class="preview-hidden" style="color:var(--muted)">${v.photos.length} fotos nesta cor</p>`:''}${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
 }
 function openEditor(p){
-  aiRequestVersion++;editing=p||null;form.reset();aiDraft=null;$('#ai-notes').value='';$('#ai-message').textContent='';$('#ai-review').hidden=true;$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
+  aiRequestVersion++;editing=p||null;form.reset();aiDraft=null;$('#ai-notes').value='';$('#ai-generate').disabled=!aiConfigured;$('#ai-message').textContent=aiConfigured?'':'Assistente de IA não configurado. O cadastro manual continua disponível.';$('#ai-review').hidden=true;$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
   $('#product-category').innerHTML=catalog.categories.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
   const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:{category:catalog.categories[0]||''};
   for(const name of ['name','category','price','description','material','care','measurements']){const input=form.elements.namedItem(name);if(input&&v[name]!==undefined)input.value=v[name];}
@@ -159,6 +159,7 @@ $('#ai-generate').addEventListener('click',async()=>{
   const button=$('#ai-generate'),message=$('#ai-message');
   if(uploads){message.textContent='Espere as fotos terminarem de carregar.';return;}
   const requestVersion=++aiRequestVersion;
+  if(!aiConfigured){message.textContent='Assistente de IA não configurado. O cadastro manual continua disponível.';return;}
   button.disabled=true;message.textContent='Preparando sugestão…';$('#ai-review').hidden=true;aiDraft=null;
   try{
     let image=null;try{image=await aiImagePreview();}catch{message.textContent='A foto não pôde ser analisada; usaremos apenas os detalhes informados.';}
@@ -174,7 +175,7 @@ $('#ai-generate').addEventListener('click',async()=>{
     $('#ai-observations').textContent=aiDraft.observations?'Verificar: '+aiDraft.observations:'';
     $('#ai-review').hidden=false;message.textContent='Sugestão pronta para sua conferência.';
   }catch(error){if(requestVersion===aiRequestVersion&&$('#edit-dialog').open)message.textContent=error.message;}
-  finally{button.disabled=false;}
+  finally{if(requestVersion===aiRequestVersion)button.disabled=!aiConfigured;}
 });
 $('#ai-apply').addEventListener('click',()=>{
   if(!aiDraft)return;
