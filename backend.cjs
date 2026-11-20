@@ -7,6 +7,7 @@ const commerce=require('./commerce.cjs');
 const {createGateway}=require('./payments.cjs');
 const images=require('./images.cjs');
 const aiCatalog=require('./ai-catalog.cjs');
+const modelLibrary=require('./model-library.cjs');
 // Safeguard for shared-hosting databases: keep a finite upload quota.
 const MAX_STORED_IMAGES=1000, MAX_STORED_IMAGE_BYTES=250*1024*1024;
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -35,6 +36,7 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
   const getSetting=async key=>{const row=await db.prepare('SELECT data FROM settings WHERE key=?').get(key);return row?JSON.parse(row.data):null;};
   const putSetting=async (key,value)=>{if(await db.prepare('SELECT data FROM settings WHERE key=?').get(key))await db.prepare('UPDATE settings SET data=? WHERE key=?').run(JSON.stringify(value),key);else await db.prepare(db.kind==='mysql'?'INSERT INTO settings(`key`,data) VALUES(?,?)':'INSERT INTO settings(key,data) VALUES(?,?)').run(key,JSON.stringify(value));};
   const getCatalog=async()=>{const value=await getSetting('catalog');return value?{categories:value.categories,sizes:value.sizes,version:value.version}:{...commerce.catalogDefaults,version:0};};
+   const getModelLibrary=async()=>await getSetting('model_library')||{version:0,models:[]};
   const scrypt=(password,salt)=>new Promise((resolve,reject)=>crypto.scrypt(password,salt,64,{N:16384,r:8,p:1,maxmem:67108864},(error,key)=>error?reject(error):resolve(key)));
   async function passwordMatches(password,owner){if(typeof password!=='string'||password.length>200||!owner?.hash)return false;const key=await scrypt(password,Buffer.from(owner.salt,'hex'));return crypto.timingSafeEqual(key,Buffer.from(owner.hash,'hex'));}
   const getCoupon=async code=>{const row=(await db.prepare('SELECT data FROM coupons WHERE code=?').get(code));return row?JSON.parse(row.data):null;};
@@ -382,6 +384,10 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             const input=await body(req);const catalog=await transaction(async()=>{
               const current=await getCatalog();if(input.version!==current.version)fail(409,'Categorias ou tamanhos mudaram. Atualize os dados antes de salvar.');
               const next=commerce.catalog(input,current),list=await allProducts(),changed=new Set();
+              const library=await getModelLibrary();
+              const migrated=library.models.map(m=>({...m,category:next.renames.categories[m.category]??m.category,sizes:m.sizes.map(s=>next.renames.sizes[s]??s)}));
+              if(migrated.some(m=>!next.categories.includes(m.category)||m.sizes.some(s=>!next.sizes.includes(s))))fail(409,'Há modelos da biblioteca usando categorias ou tamanhos removidos. Ajuste os modelos antes de excluir essas opções.');
+              const checkedLibrary=modelLibrary.validateLibrary({version:library.version,models:migrated},next,library.version);
               for(const p of list){
                 const category=next.renames.categories[p.category]??p.category;
                 if(category!==p.category){p.category=category;changed.add(p);}
@@ -397,8 +403,16 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
                 if(JSON.stringify(stock)!==JSON.stringify(p.stock)){p.stock=stock;changed.add(p);}
               }
               for(const p of changed)await saveProduct(p);
+              if(JSON.stringify(library.models)!==JSON.stringify(checkedLibrary.models))await putSetting('model_library',checkedLibrary);
               const value={categories:next.categories,sizes:next.sizes,version:current.version+1};await putSetting('catalog',value);await record('updated','catalog','catalog');return value;
             });return send(res,200,{catalog});
+          }
+          if(route==='/api/admin/model-library'&&req.method==='GET')return send(res,200,{library:await getModelLibrary()});
+          if(route==='/api/admin/model-library'&&req.method==='PUT'){
+            rate(req,'model-library',20);
+            const input=await body(req,65000);
+            const library=await transaction(async()=>{const old=await getModelLibrary(),catalog=await getCatalog(),next=modelLibrary.validateLibrary(input,catalog,old.version);await putSetting('model_library',next);await record('updated','model_library','all');return next;});
+            return send(res,200,{library});
           }
           if(route==='/api/admin/ai-catalog'&&req.method==='GET')return send(res,200,{configured:Boolean(aiEnv.MAEVI_OPENAI_API_KEY)});
           if(route==='/api/admin/ai-catalog'&&req.method==='POST'){
