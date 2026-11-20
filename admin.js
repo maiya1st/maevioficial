@@ -128,7 +128,7 @@ function preview(){
   $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${v.photos[0]?`<img src="${escapeHTML(v.photos[0])}" alt="">`:'<span>A capa desta cor aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color">${d.variants.length>1?d.variants.map(x=>`<i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(x.hex)?x.hex:'#303521')}"></i>`).join('')+d.variants.length+' cores':`<i style="background:${escapeHTML(v.hex||'#303521')}"></i>${escapeHTML(v.color||'Cor')}`}</p><p class="preview-sizes">${catalog.sizes.filter(s=>!selectedModelSizes||selectedModelSizes.includes(s)).map(s=>`<span class="${v.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${v.photos.length>1?`<p class="preview-hidden" style="color:var(--muted)">${v.photos.length} fotos nesta cor</p>`:''}${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
 }
 function openEditor(p){
-  aiRequestVersion++;editing=p||null;form.reset();aiDraft=null;$('#ai-notes').value='';$('#ai-generate').disabled=!aiConfigured;$('#ai-message').textContent=aiConfigured?'':'Assistente de IA não configurado. O cadastro manual continua disponível.';$('#ai-review').hidden=true;$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
+  aiRequestVersion++;editing=p||null;form.reset();aiDraft=null;$('#ai-notes').value='';$('#ai-generate').disabled=!aiConfigured;$('#ai-message').textContent=aiConfigured?'':'Assistente de IA não configurado. O cadastro manual continua disponível.';$('#ai-review').hidden=true;$('#ai-model-suggestion').hidden=true;$('#ai-model-unknown').hidden=true;$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
   $('#product-category').innerHTML=catalog.categories.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
   selectedModelSizes=null;renderModelSelect();
   const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:{category:catalog.categories[0]||''};
@@ -174,6 +174,10 @@ $('#ai-generate').addEventListener('click',async()=>{
     $('#ai-suggested-description').textContent=aiDraft.description;
     $('#ai-suggested-category').textContent=aiDraft.category||'Conferir manualmente';
     $('#ai-observations').textContent=aiDraft.observations?'Verificar: '+aiDraft.observations:'';
+    const suggested=modelLibrary.models.find(m=>m.id===aiDraft.modelSuggestion?.id);
+    $('#ai-model-suggestion').hidden=!suggested;
+    $('#ai-model-unknown').hidden=Boolean(suggested)||modelLibrary.models.length===0;
+    if(suggested){$('#ai-suggested-model').textContent=suggested.name+' · '+suggested.category+' · '+money(suggested.priceCents);$('#ai-model-reason').textContent=aiDraft.modelSuggestion.reason||'Confira as características antes de confirmar.';}
     $('#ai-review').hidden=false;message.textContent='Sugestão pronta para sua conferência.';
   }catch(error){if(requestVersion===aiRequestVersion&&$('#edit-dialog').open)message.textContent=error.message;}
   finally{if(requestVersion===aiRequestVersion)button.disabled=!aiConfigured;}
@@ -182,10 +186,22 @@ $('#ai-apply').addEventListener('click',()=>{
   if(!aiDraft)return;
   form.elements.name.value=aiDraft.name;
   form.elements.description.value=aiDraft.description;
-  if(aiDraft.category&&catalog.categories.includes(aiDraft.category))form.elements.category.value=aiDraft.category;
-  $('#product-model').value='';selectedModelSizes=null;stockInputs(variants[vIndex].stock);
+  const selected=modelLibrary.models.find(m=>m.id===$('#product-model').value);
+  if(aiDraft.category&&catalog.categories.includes(aiDraft.category)){
+    if(!selected||selected.category===aiDraft.category)form.elements.category.value=aiDraft.category;
+    else $('#ai-message').textContent='Categoria sugerida diferente da do modelo selecionado. Modelo e preço preservados.';
+  }
   if(!editing)form.elements.active.checked=false; // AI-assisted new pieces stay hidden until explicitly published.
   preview();$('#ai-message').textContent='Textos aplicados. Produto novo ficará oculto até você autorizar a publicação. Confira preço, cor, tamanhos e estoque antes de salvar.';
+});
+$('#ai-apply-model').addEventListener('click',()=>{
+  if(!aiDraft?.modelSuggestion)return;
+  const matching=modelLibrary.models.find(m=>m.id===aiDraft.modelSuggestion.id);
+  if(!matching){$('#ai-message').textContent='Modelo não está mais na biblioteca. Atualize os dados.';return;}
+  $('#product-model').value=matching.id;
+  $('#product-model').dispatchEvent(new Event('change',{bubbles:true}));
+  if(!editing)form.elements.active.checked=false;
+  $('#ai-message').textContent='Modelo confirmado. Preço e tamanhos sugeridos pela biblioteca; confira e ajuste antes de salvar.';
 });
 function renderModelSelect(){
   const select=$('#product-model');
