@@ -495,3 +495,14 @@ td button{border:1px solid var(--line);padding:8px 14px;border-radius:999px}
 .ai-catalog #ai-suggested-description{white-space:pre-line}
 .ai-reminder{color:#795b3b}
 .ai-catalog .button:disabled{opacity:.55;cursor:wait}
+
+/* Biblioteca reutilizável de modelos */
+#model-library-form{margin-top:28px}
+.model-library-list{display:grid;gap:14px}
+.model-library-item{min-width:0;border:1px solid var(--line, #ddd);border-radius:14px;padding:16px;margin:0}
+.model-library-item legend{font-weight:650;padding:0 8px}
+.model-library-item .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.model-library-item .form-row label{min-width:0}
+.model-sizes{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:12px 0}
+.model-size{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+#model-library-form .form-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
