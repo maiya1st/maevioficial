@@ -419,8 +419,9 @@ function createApp({ dataDir = path.join(__dirname,'data'), assetDir=path.join(_
             rate(req,'ai-catalog',6);
             const input=await body(req,190000);
             const categories=(await getCatalog()).categories;
+            const models=(await getModelLibrary()).models;
             let draft;
-            try{draft=await aiCatalog.suggest(input,{apiKey:aiEnv.MAEVI_OPENAI_API_KEY,model:aiEnv.MAEVI_OPENAI_MODEL||undefined,network,categories});}
+            try{draft=await aiCatalog.suggest(input,{apiKey:aiEnv.MAEVI_OPENAI_API_KEY,model:aiEnv.MAEVI_OPENAI_MODEL||undefined,network,categories,models});}
             catch(error){fail(error.status||400,error.message||'Não foi possível gerar o rascunho.');}
             return send(res,200,{draft});
           }
