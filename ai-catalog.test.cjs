@@ -61,3 +61,38 @@ test('status de IA indica disponibilidade sem revelar chave',async t=>{
   assert.deepEqual(result.data,{configured:true});
   assert.ok(!JSON.stringify(result.data).includes('confidential-test-key'));
 });
+
+test('IA sugere apenas modelos existentes; nunca devolve precos nem estoque inventados',async()=>{
+ const models=[{id:'11111111-1111-4111-8111-111111111111',name:'Calça jeans com brilho',category:'Calças',priceCents:18990,sizes:['P','M','G']}];
+ let sent;
+ const ask=async response=>suggest({notes:'calça jeans com detalhe brilhante',category:'Calças'},{
+   apiKey:'fixture-secret',categories,models,network:async(_url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(response)}}]})};}
+ });
+ const text={name:'Calça jeans com brilho',description:'Calça com acabamento brilhante aparente.',category:'Calças',observations:'Verificar composição.'};
+ const found=await ask({...text,modelId:models[0].id,modelReason:'Detalhes brilhantes na calça',priceCents:1,stock:{P:999}});
+ assert.deepEqual(found.modelSuggestion,{id:models[0].id,name:models[0].name,category:'Calças',reason:'Detalhes brilhantes na calça'});
+ assert.equal(found.priceCents,undefined);assert.equal(found.stock,undefined);
+ assert.ok(!JSON.stringify(sent).includes('18990'),'preço padrão não deve ser enviado à IA');
+ assert.ok(!JSON.stringify(sent).includes('fixture-secret'),'chave não pode aparecer no conteúdo da requisição');
+ assert.equal((await ask({...text,modelId:'inventado'})).modelSuggestion,null);
+ assert.equal((await ask({...text,modelId:''})).modelSuggestion,null);
+ assert.equal((await suggest({notes:'calça sem modelo claro'},{apiKey:'fixture',categories,models:[],network:async()=>({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({...text,modelId:models[0].id})}}]})})})).modelSuggestion,null);
+});
+test('endpoint usa biblioteca autenticada e mantém produtos inalterados',async t=>{
+ let req;
+ const f=fixture(t,{aiEnv:{MAEVI_OPENAI_API_KEY:'fixture-key'},network:async(_url,options)=>{
+  req=JSON.parse(options.body);
+  return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({name:'Calça de Brilho',description:'Detalhe brilhante.',category:'Calças',observations:'Conferir medidas',modelId:'11111111-1111-4111-8111-111111111111'})}}]})};
+ }});
+ const cookie=await f.login(),headers={cookie};
+ const cat=(await f.request('/api/admin/catalog',{headers})).data.catalog;
+ const model={id:'11111111-1111-4111-8111-111111111111',name:'Calça de brilho',category:cat.categories[0],priceCents:18000,sizes:['P','M','G']};
+ assert.equal((await f.request('/api/admin/model-library',{method:'PUT',headers,data:{version:0,models:[model]}})).status,200);
+ const before=(await f.request('/api/admin/products',{headers})).data.products;
+ const response=await f.post('/api/admin/ai-catalog',{notes:'calça com brilho',category:cat.categories[0]},headers);
+ assert.equal(response.status,200,JSON.stringify(response.data));
+ assert.equal(response.data.draft.modelSuggestion.id,model.id);
+ assert.equal(response.data.draft.modelSuggestion.priceCents,undefined);
+ assert.deepEqual((await f.request('/api/admin/products',{headers})).data.products,before);
+ assert.ok(JSON.stringify(req).includes(model.id));
+});
