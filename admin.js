@@ -9,7 +9,7 @@ const nextFor=o=>next[o.status]||[];
 function actionLabel(o,s){if(s!=='demo_cancelled')return o.status==='demo_payment_review'&&s==='demo_preparing'?'Conferido: está pago':label(s);if(o.status==='demo_payment_review')return 'Cancelar (conferido no Mercado Pago)';return paidOrder(o)?'Cancelar e estornar':('Cancelar e devolver estoque');}
 const TITLES={catalog:'Peças',orders:'Pedidos',structure:'Categorias e tamanhos',settings:'Loja',coupons:'Cupons',customers:'Clientes',account:'Minha conta'};
 const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
-let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer,aiConfigured=false;
+let alerts=[],subscribers=[],products=[],orders=[],activity=[],catalog={categories:[],sizes:[],version:0},modelLibrary={version:0,models:[]},account={configured:false,email:''},sessionMethod='',authEpoch=0,toastTimer,aiConfigured=false;
 const sum=stock=>Object.values(stock||{}).reduce((a,b)=>a+b,0);
 
 function toast(message){const t=$('#admin-toast');t.textContent=message;t.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('visible'),3800);}
@@ -26,10 +26,10 @@ async function api(url,options={}){
 async function refresh(silent=false){
   $('#refresh').disabled=true;const epoch=authEpoch;
   try{
-    const [list,purchases,events,structure,me,settings,waiting,emails,aiStatus]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers'),api('/api/admin/ai-catalog').catch(()=>({configured:false}))]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
+    const [list,purchases,events,structure,models,me,settings,waiting,emails,aiStatus]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders'),api('/api/admin/activity'),api('/api/admin/catalog'),api('/api/admin/model-library'),api('/api/admin/account'),api('/api/admin/settings'),api('/api/admin/alerts'),api('/api/admin/subscribers'),api('/api/admin/ai-catalog').catch(()=>({configured:false}))]);alerts=waiting.alerts;subscribers=emails.subscribers;payment=settings.payment||{};
     if(epoch!==authEpoch)return false;
-    products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;aiConfigured=Boolean(aiStatus.configured);$('#ai-generate').disabled=!aiConfigured;account=me.account;sessionMethod=me.session.method;
-    loggedIn(true);render();renderStructure();renderAccount();renderCustomers();document.dispatchEvent(new Event('maevi:admin-ready'));
+    products=list.products;orders=purchases.orders;activity=events.activity;catalog=structure.catalog;modelLibrary=models.library;aiConfigured=Boolean(aiStatus.configured);$('#ai-generate').disabled=!aiConfigured;account=me.account;sessionMethod=me.session.method;
+    loggedIn(true);render();renderStructure();renderModelLibrary();renderAccount();renderCustomers();document.dispatchEvent(new Event('maevi:admin-ready'));
     if(!silent)toast('Dados atualizados.');return true;
   }catch(error){if(!silent&&!$('#dashboard').hidden)$('#dashboard-message').textContent=error.message;return false;}
   finally{$('#refresh').disabled=false;}
@@ -93,15 +93,15 @@ $('#admin-orders').addEventListener('click',async event=>{
 
 /* ---------- Editor de peça (cores, fotos e estoque) ---------- */
 const form=$('#product-form'),MAX_PHOTOS=8;
-let editing=null,snapshot='',uploads=0,variants=[],vIndex=0,groupKey='',removedIds=[];
+let editing=null,snapshot='',uploads=0,variants=[],vIndex=0,groupKey='',removedIds=[],selectedModelSizes=null;
 let lookSel=new Set(),chart={columns:['Busto','Cintura','Quadril'],rows:{}};
 const newGroup=()=>'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const groupOf=p=>p?.colorGroup?products.filter(x=>x.colorGroup===p.colorGroup).sort((a,b)=>a.id-b.id):p?[p]:[];
 function variantFrom(p){return {id:p?.id||null,version:p?.version||0,color:p?.color||'',hex:p?.hex||'#303521',photos:[p?.image,p?.secondaryImage,...(p?.extraImages||[])].filter(Boolean),stock:{...(p?.stock||{})}};}
 function stockInputs(stock){
-  $('#stock-grid').innerHTML=catalog.sizes.map(s=>`<div class="stepper"><span>${escapeHTML(s)}</span><button type="button" data-step="-1" aria-label="Diminuir ${escapeHTML(s)}">−</button><input type="number" inputmode="numeric" min="0" max="10000" value="${Number(stock?.[s])||0}" data-size="${escapeHTML(s)}" aria-label="Estoque do tamanho ${escapeHTML(s)}"><button type="button" data-step="1" aria-label="Aumentar ${escapeHTML(s)}">+</button></div>`).join('');
+  $('#stock-grid').innerHTML=catalog.sizes.filter(s=>!selectedModelSizes||selectedModelSizes.includes(s)).map(s=>`<div class="stepper"><span>${escapeHTML(s)}</span><button type="button" data-step="-1" aria-label="Diminuir ${escapeHTML(s)}">−</button><input type="number" inputmode="numeric" min="0" max="10000" value="${Number(stock?.[s])||0}" data-size="${escapeHTML(s)}" aria-label="Estoque do tamanho ${escapeHTML(s)}"><button type="button" data-step="1" aria-label="Aumentar ${escapeHTML(s)}">+</button></div>`).join('');
 }
-function readStock(){return Object.fromEntries([...$('#stock-grid').querySelectorAll('input[data-size]')].map(i=>[i.dataset.size,Math.max(0,Math.min(10000,Math.trunc(Number(i.value))||0))]));}
+function readStock(){const existing=variants[vIndex]?.stock||{};return Object.fromEntries(catalog.sizes.map(s=>{const i=[...$('#stock-grid').querySelectorAll('input[data-size]')].find(input=>input.dataset.size===s);return [s,i?Math.max(0,Math.min(10000,Math.trunc(Number(i.value))||0)):(existing[s]||0)];}));}
 function syncVariant(){const v=variants[vIndex];if(!v||!$('#stock-grid').querySelector('input'))return;v.color=$('#v-color').value.trim();v.hex=$('#v-hex').value;v.stock=readStock();}
 function renderTabs(){
   $('#variant-tabs').innerHTML=variants.map((v,i)=>`<button type="button" role="tab" data-variant="${i}" aria-selected="${i===vIndex}"><i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(v.hex)?v.hex:'#303521')}"></i>${escapeHTML(v.color||'Nova cor')}${v.photos[0]?'':'<em>sem foto</em>'}</button>`).join('')+`<button type="button" class="add-variant" id="add-variant">+ Adicionar cor</button>`;
@@ -125,11 +125,12 @@ function formData(){
 }
 function preview(){
   const d=formData(),v=d.variants[vIndex]||{photos:[],stock:{}},total=sum(v.stock);$('#hex-label').textContent=$('#v-hex').value;$('#stock-total').textContent=`${total} unidade${total===1?'':'s'} desta cor`;
-  $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${v.photos[0]?`<img src="${escapeHTML(v.photos[0])}" alt="">`:'<span>A capa desta cor aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color">${d.variants.length>1?d.variants.map(x=>`<i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(x.hex)?x.hex:'#303521')}"></i>`).join('')+d.variants.length+' cores':`<i style="background:${escapeHTML(v.hex||'#303521')}"></i>${escapeHTML(v.color||'Cor')}`}</p><p class="preview-sizes">${catalog.sizes.map(s=>`<span class="${v.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${v.photos.length>1?`<p class="preview-hidden" style="color:var(--muted)">${v.photos.length} fotos nesta cor</p>`:''}${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
+  $('#product-preview').innerHTML=`<article class="preview-card"><div class="preview-photo">${v.photos[0]?`<img src="${escapeHTML(v.photos[0])}" alt="">`:'<span>A capa desta cor aparece aqui</span>'}${total===0?'<span class="tag">ESGOTADO</span>':d.featured?'<span class="tag">CURADORIA MAÉVI</span>':''}</div><p class="preview-cat">${escapeHTML(d.category||'Categoria')}</p><h3>${escapeHTML(d.name||'Nome da peça')}</h3><p class="preview-price">${d.priceCents>0?money(d.priceCents):'R$ 0,00'}</p><p class="preview-color">${d.variants.length>1?d.variants.map(x=>`<i style="background:${escapeHTML(/^#[0-9a-f]{6}$/i.test(x.hex)?x.hex:'#303521')}"></i>`).join('')+d.variants.length+' cores':`<i style="background:${escapeHTML(v.hex||'#303521')}"></i>${escapeHTML(v.color||'Cor')}`}</p><p class="preview-sizes">${catalog.sizes.filter(s=>!selectedModelSizes||selectedModelSizes.includes(s)).map(s=>`<span class="${v.stock[s]>0?'':'off'}">${escapeHTML(s)}</span>`).join('')}</p>${v.photos.length>1?`<p class="preview-hidden" style="color:var(--muted)">${v.photos.length} fotos nesta cor</p>`:''}${d.active?'':'<p class="preview-hidden">Oculta: não aparece para as clientes</p>'}</article>`;
 }
 function openEditor(p){
   aiRequestVersion++;editing=p||null;form.reset();aiDraft=null;$('#ai-notes').value='';$('#ai-generate').disabled=!aiConfigured;$('#ai-message').textContent=aiConfigured?'':'Assistente de IA não configurado. O cadastro manual continua disponível.';$('#ai-review').hidden=true;$('#edit-message').textContent='';$('#edit-title').textContent=p?'Editar peça':'Nova peça';$('#delete-product').hidden=!p;
   $('#product-category').innerHTML=catalog.categories.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
+  selectedModelSizes=null;renderModelSelect();
   const v=p?{...p,price:(p.priceCents/100).toFixed(2)}:{category:catalog.categories[0]||''};
   for(const name of ['name','category','price','description','material','care','measurements']){const input=form.elements.namedItem(name);if(input&&v[name]!==undefined)input.value=v[name];}
   form.elements.active.checked=p?p.active:true;form.elements.featured.checked=Boolean(p?.featured);
@@ -182,8 +183,24 @@ $('#ai-apply').addEventListener('click',()=>{
   form.elements.name.value=aiDraft.name;
   form.elements.description.value=aiDraft.description;
   if(aiDraft.category&&catalog.categories.includes(aiDraft.category))form.elements.category.value=aiDraft.category;
+  $('#product-model').value='';selectedModelSizes=null;stockInputs(variants[vIndex].stock);
   if(!editing)form.elements.active.checked=false; // AI-assisted new pieces stay hidden until explicitly published.
   preview();$('#ai-message').textContent='Textos aplicados. Produto novo ficará oculto até você autorizar a publicação. Confira preço, cor, tamanhos e estoque antes de salvar.';
+});
+function renderModelSelect(){
+  const select=$('#product-model');
+  select.innerHTML='<option value="">Cadastro manual (sem modelo)</option>'+modelLibrary.models.map(m=>`<option value="${escapeHTML(m.id)}">${escapeHTML(m.category)} · ${escapeHTML(m.name)} · ${money(m.priceCents)}</option>`).join('');
+  $('#product-model-hint').textContent='Selecione um modelo para sugerir categoria, preço e tamanhos. O valor continua editável.';
+}
+$('#product-model').addEventListener('change',event=>{
+  const m=modelLibrary.models.find(x=>x.id===event.target.value);
+  syncVariant();selectedModelSizes=m&&!editing?m.sizes:null;
+  if(m){
+    form.elements.category.value=m.category;form.elements.price.value=(m.priceCents/100).toFixed(2);
+    if(!form.elements.name.value.trim())form.elements.name.value=m.name;
+    $('#product-model-hint').textContent='Preço sugerido pelo modelo, pode alterar. Tamanhos: '+m.sizes.join(', ')+'.';
+  }else $('#product-model-hint').textContent='Cadastro manual: informe categoria, preço e quantidades.';
+  stockInputs(variants[vIndex].stock);preview();
 });
 $('#new-product').addEventListener('click',()=>openEditor(null));
 $('#close-edit').addEventListener('click',closeEditor);$('#cancel-edit').addEventListener('click',closeEditor);
@@ -350,6 +367,46 @@ $('#structure-form').addEventListener('submit',async event=>{
   catch(error){message.textContent=error.message;}finally{$('#save-structure').disabled=false;}
 });
 
+/* ---------- Biblioteca de modelos reutilizáveis ---------- */
+const modelForm=$('#model-library-form');
+function renderModelLibrary(){
+  const list=$('#model-library-list');
+  list.innerHTML=modelLibrary.models.map(modelRow).join('');
+  $('#model-library-message').textContent='';
+}
+function modelRow(m){
+  const cats=catalog.categories.map(c=>`<option value="${escapeHTML(c)}"${c===m.category?' selected':''}>${escapeHTML(c)}</option>`).join('');
+  const sizes=catalog.sizes.map(s=>`<label class="model-size"><input type="checkbox" data-model-size="${escapeHTML(s)}"${m.sizes.includes(s)?' checked':''}><span>${escapeHTML(s)}</span></label>`).join('');
+  return `<fieldset class="model-library-item" data-model-id="${escapeHTML(m.id)}"><legend>${escapeHTML(m.name||'Novo modelo')}</legend>
+    <div class="form-row"><label>Nome do modelo<input data-model-name maxlength="100" value="${escapeHTML(m.name)}" required placeholder="Ex.: Calça pantalona"></label>
+    <label>Categoria<select data-model-category>${cats}</select></label>
+    <label>Preço padrão (R$)<input data-model-price type="number" min="0.01" max="100000" step="0.01" value="${(m.priceCents/100).toFixed(2)}" required></label></div>
+    <div class="model-sizes"><span>Tamanhos</span>${sizes}</div>
+    <button type="button" class="text-link danger-link" data-delete-model>Remover modelo</button></fieldset>`;
+}
+$('#add-model').addEventListener('click',()=>{
+  const m={id:crypto.randomUUID(),name:'',category:catalog.categories[0]||'',priceCents:0,sizes:catalog.sizes.filter(s=>['P','M','G'].includes(s))};
+  if(!m.sizes.length)m.sizes=catalog.sizes.slice(0,1);
+  $('#model-library-list').insertAdjacentHTML('beforeend',modelRow(m));
+  $('#model-library-list').lastElementChild.querySelector('[data-model-name]').focus();
+});
+$('#model-library-list').addEventListener('click',e=>{const b=e.target.closest('[data-delete-model]');if(b)b.closest('[data-model-id]').remove();});
+modelForm.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const message=$('#model-library-message'),button=$('#save-models');
+  const models=[...$('#model-library-list').querySelectorAll('[data-model-id]')].map(row=>({
+    id:row.dataset.modelId,name:row.querySelector('[data-model-name]').value.trim(),
+    category:row.querySelector('[data-model-category]').value,
+    priceCents:Math.round(Number(row.querySelector('[data-model-price]').value)*100),
+    sizes:[...row.querySelectorAll('[data-model-size]:checked')].map(i=>i.dataset.modelSize)
+  }));
+  button.disabled=true;message.textContent='Salvando biblioteca…';
+  try{
+    const result=await api('/api/admin/model-library',{method:'PUT',body:JSON.stringify({version:modelLibrary.version,models})});
+    modelLibrary=result.library;renderModelLibrary();toast('Biblioteca de modelos salva.');
+  }catch(error){message.textContent=error.message;}
+  finally{button.disabled=false;}
+});
 /* ---------- Conta ---------- */
 const accountForm=$('#account-form');
 function renderAccount(){

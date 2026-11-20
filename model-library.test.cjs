@@ -1,0 +1,35 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {fixture}=require('./testing.cjs');
+const id='11111111-1111-4111-8111-111111111111';
+test('biblioteca: autenticacao, persistencia, concorrencia e preco sugerido independente',async t=>{
+ const f=fixture(t),cookie=await f.login(),headers={cookie};
+ assert.equal((await f.request('/api/admin/model-library')).status,401);
+ const initial=await f.request('/api/admin/model-library',{headers});assert.equal(initial.status,200);assert.deepEqual(initial.data.library,{version:0,models:[]});
+ const product=(await f.request('/api/admin/products',{headers})).data.products[0];
+ const model={id,name:'Calça pantalona',category:'Calças',priceCents:18000,sizes:['P','M','G']};
+ const c=(await f.request('/api/admin/catalog',{headers})).data.catalog;
+ const category=c.categories[0];model.category=category;
+ const save=async data=>f.request('/api/admin/model-library',{method:'PUT',headers,data});
+ const created=await save({version:0,models:[model]});assert.equal(created.status,200);assert.equal(created.data.library.models[0].priceCents,18000);
+ assert.equal((await save({version:0,models:[model]})).status,409);
+ assert.equal((await save({version:1,models:[{...model,priceCents:0}]})).status,400);
+ assert.equal((await save({version:1,models:[{...model,sizes:['P','P']}]})).status,400);
+ assert.equal((await save({version:1,models:[model,{...model,id:'22222222-2222-4222-8222-222222222222'}]})).status,400);
+ const updated=await save({version:1,models:[{...model,priceCents:19990}]});assert.equal(updated.status,200);
+ const unchanged=(await f.request('/api/admin/products',{headers})).data.products[0];assert.equal(unchanged.priceCents,product.priceCents);
+ assert.equal((await f.request('/api/products')).data.products.find(x=>x.id===product.id).priceCents,product.priceCents);
+});
+test('biblioteca adapta renomeacao de categoria e protege tamanho utilizado',async t=>{
+ const f=fixture(t),cookie=await f.login(),headers={cookie};
+ const old=(await f.request('/api/admin/catalog',{headers})).data.catalog;
+ const model={id,name:'Modelo base',category:old.categories[0],priceCents:14900,sizes:['P','M','G']};
+ const save=await f.request('/api/admin/model-library',{method:'PUT',headers,data:{version:0,models:[model]}});assert.equal(save.status,200);
+ const renamed='Nova Categoria';
+ const response=await f.request('/api/admin/catalog',{method:'PUT',headers,data:{version:old.version,categories:old.categories.map((c,i)=>i===0?renamed:c),sizes:old.sizes,renames:{categories:{[old.categories[0]]:renamed},sizes:{}}}});
+ assert.equal(response.status,200);
+ const lib=(await f.request('/api/admin/model-library',{headers})).data.library;
+ assert.equal(lib.models[0].category,renamed);
+ const remove=await f.request('/api/admin/catalog',{method:'PUT',headers,data:{version:response.data.catalog.version,categories:response.data.catalog.categories,sizes:response.data.catalog.sizes.filter(s=>s!=='P'),renames:{categories:{},sizes:{}}}});
+ assert.equal(remove.status,409);
+});
